@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/order_model.dart';
 import '../services/location_service.dart';
 
@@ -15,12 +16,12 @@ class OrderDetailScreen extends StatefulWidget {
 }
 
 class _OrderDetailScreenState extends State<OrderDetailScreen> {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   StreamSubscription<Position>? _locationSubscription;
   Position? _currentShipperPosition;
 
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
+  final List<Marker> _markers = [];
+  final List<Polyline> _polylines = [];
   final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
   @override
@@ -39,46 +40,42 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   void _initMapMarkers() {
-    _markers.clear();
-    // 1. Thêm marker Lấy hàng
-    _markers.add(
-      Marker(
-        markerId: const MarkerId("pickup"),
-        position: LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
-        infoWindow: InfoWindow(
-          title: "Điểm Lấy Hàng",
-          snippet: widget.order.pickupAddress,
+    _markers
+      ..clear()
+      ..add(
+        Marker(
+          point: LatLng(
+            widget.order.pickupLatitude,
+            widget.order.pickupLongitude,
+          ),
+          child: const Icon(Icons.location_on, color: Colors.orange, size: 32),
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-      ),
-    );
-
-    // 2. Thêm marker Giao hàng
-    _markers.add(
-      Marker(
-        markerId: const MarkerId("delivery"),
-        position: LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude),
-        infoWindow: InfoWindow(
-          title: "Điểm Giao Hàng",
-          snippet: widget.order.deliveryAddress,
+      )
+      ..add(
+        Marker(
+          point: LatLng(
+            widget.order.deliveryLatitude,
+            widget.order.deliveryLongitude,
+          ),
+          child: const Icon(Icons.location_on, color: Colors.red, size: 32),
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      ),
-    );
+      );
 
-    // Vẽ đường line nối 2 điểm mặc định
-    _polylines.add(
-      Polyline(
-        polylineId: const PolylineId("route_direct"),
-        points: [
-          LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
-          LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude),
-        ],
-        color: Colors.blue.shade300,
-        width: 4,
-        patterns: [PatternItem.dash(10), PatternItem.gap(10)],
-      ),
-    );
+    _polylines
+      ..clear()
+      ..add(
+        Polyline(
+          points: [
+            LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
+            LatLng(
+              widget.order.deliveryLatitude,
+              widget.order.deliveryLongitude,
+            ),
+          ],
+          color: Colors.blue.shade300,
+          strokeWidth: 4.0,
+        ),
+      );
   }
 
   Future<void> _startShipperTracking() async {
@@ -105,34 +102,53 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() {
       _currentShipperPosition = position;
 
-      // Cập nhật marker vị trí Shipper
-      _markers.removeWhere((m) => m.markerId.value == "shipper");
-      _markers.add(
-        Marker(
-          markerId: const MarkerId("shipper"),
-          position: LatLng(position.latitude, position.longitude),
-          infoWindow: InfoWindow(
-            title: "Vị trí của bạn (Shipper)",
-            snippet: "Tọa độ: ${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}",
+      _markers
+        ..clear()
+        ..add(
+          Marker(
+            point: LatLng(
+              widget.order.pickupLatitude,
+              widget.order.pickupLongitude,
+            ),
+            child: const Icon(
+              Icons.location_on,
+              color: Colors.orange,
+              size: 32,
+            ),
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        ),
-      );
+        )
+        ..add(
+          Marker(
+            point: LatLng(
+              widget.order.deliveryLatitude,
+              widget.order.deliveryLongitude,
+            ),
+            child: const Icon(Icons.location_on, color: Colors.red, size: 32),
+          ),
+        )
+        ..add(
+          Marker(
+            point: LatLng(position.latitude, position.longitude),
+            child: const Icon(Icons.motorcycle, color: Colors.blue, size: 30),
+          ),
+        );
 
-      // Cập nhật polyline di chuyển từ Shipper -> Điểm lấy -> Điểm giao
-      _polylines.clear();
-      _polylines.add(
-        Polyline(
-          polylineId: const PolylineId("route_shipper"),
-          points: [
-            LatLng(position.latitude, position.longitude),
-            LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
-            LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude),
-          ],
-          color: Colors.orange.shade800,
-          width: 5,
-        ),
-      );
+      _polylines
+        ..clear()
+        ..add(
+          Polyline(
+            points: [
+              LatLng(position.latitude, position.longitude),
+              LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
+              LatLng(
+                widget.order.deliveryLatitude,
+                widget.order.deliveryLongitude,
+              ),
+            ],
+            color: Colors.orange.shade800,
+            strokeWidth: 5.0,
+          ),
+        );
     });
 
     // Di chuyển Camera để focus cả 3 điểm nếu MapController sẵn sàng
@@ -140,34 +156,48 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   void _fitCameraBounds() {
-    if (_mapController == null) return;
-
     double minLat = widget.order.pickupLatitude;
     double maxLat = widget.order.pickupLatitude;
     double minLng = widget.order.pickupLongitude;
     double maxLng = widget.order.pickupLongitude;
 
     // So sánh thêm với điểm giao hàng
-    if (widget.order.deliveryLatitude < minLat) minLat = widget.order.deliveryLatitude;
-    if (widget.order.deliveryLatitude > maxLat) maxLat = widget.order.deliveryLatitude;
-    if (widget.order.deliveryLongitude < minLng) minLng = widget.order.deliveryLongitude;
-    if (widget.order.deliveryLongitude > maxLng) maxLng = widget.order.deliveryLongitude;
+    if (widget.order.deliveryLatitude < minLat) {
+      minLat = widget.order.deliveryLatitude;
+    }
+    if (widget.order.deliveryLatitude > maxLat) {
+      maxLat = widget.order.deliveryLatitude;
+    }
+    if (widget.order.deliveryLongitude < minLng) {
+      minLng = widget.order.deliveryLongitude;
+    }
+    if (widget.order.deliveryLongitude > maxLng) {
+      maxLng = widget.order.deliveryLongitude;
+    }
 
     // So sánh thêm với vị trí shipper
     if (_currentShipperPosition != null) {
-      if (_currentShipperPosition!.latitude < minLat) minLat = _currentShipperPosition!.latitude;
-      if (_currentShipperPosition!.latitude > maxLat) maxLat = _currentShipperPosition!.latitude;
-      if (_currentShipperPosition!.longitude < minLng) minLng = _currentShipperPosition!.longitude;
-      if (_currentShipperPosition!.longitude > maxLng) maxLng = _currentShipperPosition!.longitude;
+      if (_currentShipperPosition!.latitude < minLat) {
+        minLat = _currentShipperPosition!.latitude;
+      }
+      if (_currentShipperPosition!.latitude > maxLat) {
+        maxLat = _currentShipperPosition!.latitude;
+      }
+      if (_currentShipperPosition!.longitude < minLng) {
+        minLng = _currentShipperPosition!.longitude;
+      }
+      if (_currentShipperPosition!.longitude > maxLng) {
+        maxLng = _currentShipperPosition!.longitude;
+      }
     }
 
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat - 0.005, minLng - 0.005),
-          northeast: LatLng(maxLat + 0.005, maxLng + 0.005),
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds(
+          LatLng(minLat - 0.005, minLng - 0.005),
+          LatLng(maxLat + 0.005, maxLng + 0.005),
         ),
-        50, // padding
+        padding: const EdgeInsets.all(50),
       ),
     );
   }
@@ -221,30 +251,40 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             flex: 4,
             child: Stack(
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: LatLng(order.pickupLatitude, order.pickupLongitude),
-                    zoom: 13.5,
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: LatLng(
+                      order.pickupLatitude,
+                      order.pickupLongitude,
+                    ),
+                    initialZoom: 13.5,
                   ),
-                  markers: _markers,
-                  polylines: _polylines,
-                  onMapCreated: (controller) {
-                    _mapController = controller;
-                    if (_currentShipperPosition != null) {
-                      _fitCameraBounds();
-                    }
-                  },
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.goship',
+                    ),
+                    MarkerLayer(markers: _markers),
+                    PolylineLayer(polylines: _polylines),
+                  ],
                 ),
                 if (order.status == "delivering")
                   Positioned(
                     top: 10,
                     right: 10,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.green.shade800,
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 4),
+                        ],
                       ),
                       child: const Row(
                         children: [
@@ -252,12 +292,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           SizedBox(width: 6),
                           Text(
                             "GPS Đang Hoạt Động",
-                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  )
+                  ),
               ],
             ),
           ),
@@ -291,30 +335,36 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       children: [
                         Text(
                           "Đơn hàng: ${order.id}",
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: order.status == "pending"
                                 ? Colors.orange.withOpacity(0.15)
                                 : order.status == "delivering"
-                                    ? Colors.blue.withOpacity(0.15)
-                                    : Colors.green.withOpacity(0.15),
+                                ? Colors.blue.withOpacity(0.15)
+                                : Colors.green.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
                             order.status == "pending"
                                 ? "Đang Chờ"
                                 : order.status == "delivering"
-                                    ? "Đang Giao"
-                                    : "Đã Giao",
+                                ? "Đang Giao"
+                                : "Đã Giao",
                             style: TextStyle(
                               color: order.status == "pending"
                                   ? Colors.orange.shade800
                                   : order.status == "delivering"
-                                      ? Colors.blue.shade800
-                                      : Colors.green.shade800,
+                                  ? Colors.blue.shade800
+                                  : Colors.green.shade800,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -330,7 +380,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.store, color: Colors.orange.shade800, size: 22),
+                        Icon(
+                          Icons.store,
+                          color: Colors.orange.shade800,
+                          size: 22,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -338,10 +392,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             children: [
                               Text(
                                 "Người gửi: ${order.senderName}",
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
                               ),
-                              Text("SĐT: ${order.senderPhone}", style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                              Text("Địa chỉ: ${order.pickupAddress}", style: const TextStyle(fontSize: 13)),
+                              Text(
+                                "SĐT: ${order.senderPhone}",
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                "Địa chỉ: ${order.pickupAddress}",
+                                style: const TextStyle(fontSize: 13),
+                              ),
                             ],
                           ),
                         ),
@@ -353,7 +419,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.person_pin_circle, color: Colors.red, size: 22),
+                        const Icon(
+                          Icons.person_pin_circle,
+                          color: Colors.red,
+                          size: 22,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -361,10 +431,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             children: [
                               Text(
                                 "Người nhận: ${order.receiverName}",
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
                               ),
-                              Text("SĐT: ${order.receiverPhone}", style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                              Text("Địa chỉ: ${order.deliveryAddress}", style: const TextStyle(fontSize: 13)),
+                              Text(
+                                "SĐT: ${order.receiverPhone}",
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                "Địa chỉ: ${order.deliveryAddress}",
+                                style: const TextStyle(fontSize: 13),
+                              ),
                             ],
                           ),
                         ),
@@ -381,20 +463,39 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text("Phí ship (Shipper nhận)", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            const Text(
+                              "Phí ship (Shipper nhận)",
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
                             Text(
                               currencyFormatter.format(order.deliveryFee),
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
                             ),
                           ],
                         ),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            const Text("Tiền COD (Thu hộ)", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            const Text(
+                              "Tiền COD (Thu hộ)",
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
                             Text(
                               currencyFormatter.format(order.price),
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
@@ -411,12 +512,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           onPressed: _acceptOrderDirectly,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.orange.shade800,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           icon: const Icon(Icons.check, color: Colors.white),
                           label: const Text(
                             "NHẬN ĐƠN HÀNG NÀY",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       )
@@ -428,12 +535,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           onPressed: _completeDelivery,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green.shade700,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           icon: const Icon(Icons.done_all, color: Colors.white),
                           label: const Text(
                             "HOÀN THÀNH GIAO HÀNG",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       )
@@ -452,7 +565,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             SizedBox(width: 8),
                             Text(
                               "Đơn hàng này đã giao thành công!",
-                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                                fontSize: 15,
+                              ),
                             ),
                           ],
                         ),

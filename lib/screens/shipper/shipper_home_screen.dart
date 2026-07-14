@@ -224,7 +224,7 @@ class OrderAcceptanceCard extends StatefulWidget {
 }
 
 class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
-  int _timeLeft = 60; // Set lại thành 60 giây như yêu cầu
+  int _timeLeft = 10;
   Timer? _timer;
 
   @override

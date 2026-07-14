@@ -25,7 +25,7 @@ class ShipperRouteScreen extends StatelessWidget {
       ),
       body: Stack(
         children: [
-          // Giao diện mô phỏng Google Maps tĩnh
+          // Giao diện mô phỏng Open Street Maps tĩnh
           Container(
             color: Colors.grey.shade200,
             child: Center(
