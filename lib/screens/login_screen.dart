@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import 'admin/admin_home_screen.dart';
+import 'shipper/shipper_home_screen.dart';
 import 'customer_home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,12 +43,26 @@ class _LoginScreenState extends State<LoginScreen> {
       isLoading = true;
     });
 
-    // Đối với demo, ta đồng bộ bất kỳ đăng nhập thành công nào
-    bool success = emailController.text.trim() == "customer@goship.vn" && 
-                   passwordController.text.trim() == "password";
+    // Lấy thông tin người dùng nhập
+    String inputEmail = emailController.text.trim();
+    String inputPassword = passwordController.text.trim();
 
-    if (success) {
-      await PreferenceServiceForClient.saveFakeSession();
+    // Giả lập logic kiểm tra Role (Sau này kết nối API/Firebase sẽ lấy từ Server)
+    String? assignedRole;
+    bool isSuccess = false;
+
+    // Giả lập mật khẩu chung là "password" cho tất cả các Role để dễ test
+    if (inputPassword == "password") {
+      if (inputEmail == "customer@goship.vn") {
+        assignedRole = "CUSTOMER";
+        isSuccess = true;
+      } else if (inputEmail == "admin@goship.vn") {
+        assignedRole = "ADMIN";
+        isSuccess = true;
+      } else if (inputEmail == "shipper@goship.vn") {
+        assignedRole = "SHIPPER";
+        isSuccess = true;
+      }
     }
 
     if (!mounted) return;
@@ -55,22 +71,36 @@ class _LoginScreenState extends State<LoginScreen> {
       isLoading = false;
     });
 
-    if (success) {
+    if (isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Đăng nhập Khách hàng thành công!"),
+        SnackBar(
+          content: Text("Đăng nhập thành công! Đang chuyển hướng quyền $assignedRole..."),
           backgroundColor: Colors.green,
         ),
       );
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
-      );
+      // ĐIỀU HƯỚNG DỰA TRÊN ROLE NGƯỜI DÙNG
+      if (assignedRole == "ADMIN") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+        );
+      } else if (assignedRole == "CUSTOMER") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
+        );
+      }  
+      else if (assignedRole == "SHIPPER") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ShipperHomeScreen()),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Sai email hoặc mật khẩu! (Demo: customer@goship.vn / password)"),
+          content: Text("Sai email hoặc mật khẩu! Vui lòng xem thông tin Demo bên dưới."),
           backgroundColor: Colors.red,
         ),
       );
@@ -225,10 +255,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.info, color: primaryColor, size: 18),
+                            Icon(Icons.admin_panel_settings, color: primaryColor, size: 18),
                             const SizedBox(width: 6),
                             Text(
-                              "Tài khoản Khách hàng dùng thử:",
+                              "Tài khoản Demo (Pass: password):",
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: primaryColor,
@@ -236,9 +266,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        const Text("Email: customer@goship.vn"),
-                        const Text("Mật khẩu: password"),
+                        const SizedBox(height: 8),
+                        const Text("• Điều phối viên: admin@goship.vn", style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text("• Khách hàng: customer@goship.vn"),
+                        const Text("• Shipper: shipper@goship.vn"),
                       ],
                     ),
                   ),
