@@ -29,7 +29,6 @@ class AuthService {
       await PreferenceService.saveUser(user);
       return true;
     } catch (e) {
-      print("Register Error: $e");
       return false;
     }
   }
@@ -43,24 +42,34 @@ class AuthService {
     required bool rememberMe,
   }) async {
     try {
-      await initMockUser(); // Ensure default user exists
+      await initMockUser();
 
-      UserModel? user = await PreferenceService.getUser();
-      if (user == null) {
-        return false;
-      }
+      final cleanEmail = email.trim().toLowerCase();
+      final cleanPassword = password.trim();
 
-      if (user.email == email && user.password == password) {
-        if (rememberMe) {
-          await PreferenceService.setLogin(true);
-        }
+      // Check current active user
+      UserModel? current = await PreferenceService.getUser();
+      if (current != null && current.email.trim().toLowerCase() == cleanEmail && current.password.trim() == cleanPassword) {
+        if (rememberMe) await PreferenceService.setLogin(true);
         await PreferenceService.setSessionLogin(true);
-        await PreferenceService.addHistory(email);
+        await PreferenceService.addHistory(cleanEmail);
         return true;
       }
+
+      // Check registered users list
+      List<UserModel> users = await PreferenceService.getUsersList();
+      for (var u in users) {
+        if (u.email.trim().toLowerCase() == cleanEmail && u.password.trim() == cleanPassword) {
+          await PreferenceService.saveUser(u);
+          if (rememberMe) await PreferenceService.setLogin(true);
+          await PreferenceService.setSessionLogin(true);
+          await PreferenceService.addHistory(cleanEmail);
+          return true;
+        }
+      }
+
       return false;
     } catch (e) {
-      print("Login Error: $e");
       return false;
     }
   }
@@ -99,13 +108,10 @@ class AuthService {
   static Future<bool> isExistEmail(String email) async {
     try {
       await initMockUser();
-      UserModel? user = await PreferenceService.getUser();
-      if (user == null) {
-        return false;
-      }
-      return user.email.trim().toLowerCase() == email.trim().toLowerCase();
+      final cleanEmail = email.trim().toLowerCase();
+      List<UserModel> users = await PreferenceService.getUsersList();
+      return users.any((u) => u.email.trim().toLowerCase() == cleanEmail);
     } catch (e) {
-      print("Check Email Error: $e");
       return false;
     }
   }
