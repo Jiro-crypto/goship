@@ -198,7 +198,7 @@ class _ShipperOrderDetailScreenState extends State<ShipperOrderDetailScreen> {
                     const Divider(),
                     _buildInfoRow(Icons.map, "Điểm giao", widget.order.deliveryAddress),
                     const Divider(),
-                    _buildInfoRow(Icons.attach_money, "Tiền COD", "${widget.order.price} đ", color: Colors.red),
+                    _buildInfoRow(Icons.attach_money, "Tiền COD", "${widget.order.price}đ", color: Colors.red),
                   ],
                 ),
               ),
