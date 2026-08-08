@@ -6,6 +6,7 @@ import '../../models/order_model.dart';
 import '../../models/shipper_model.dart';
 import '../login_screen.dart';
 import '../../services/auth_service.dart';
+import '../../services/preference_service.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -114,14 +115,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
     );
   }
 
-  void _confirmAssignShipper(OrderModel order, ShipperModel shipper) {
+  void _confirmAssignShipper(OrderModel order, ShipperModel shipper) async {
     setState(() {
-      order.status = "delivering"; // BR_assignOrder_05: Đổi trạng thái tự động
+      order.maShipper = shipper.id;
+      order.trangThaiDon = "Đang giao";
+      order.status = "delivering";
     });
 
+    await PreferenceService.saveOrder(order);
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text("Phân công đơn cho ${shipper.name} thành công. Đã gửi thông báo đến Shipper."), // MSG_AS_01
+        content: Text("Phân công đơn cho ${shipper.name} (${shipper.id}) thành công. Đã cập nhật trạng thái Đang giao."),
         backgroundColor: Colors.green.shade700,
       ),
     );
@@ -166,7 +172,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
     );
   }
 
-  void _processCancelOrder(OrderModel order) {
+  void _processCancelOrder(OrderModel order) async {
     // Alternative Flow: Hủy khi đơn Đang giao
     if (order.status == "delivering") {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -178,9 +184,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with SingleTickerProv
     }
 
     setState(() {
+      order.trangThaiDon = "Đã hủy";
       order.status = "cancelled"; // Cập nhật trạng thái thành Đã Hủy
     });
 
+    await PreferenceService.saveOrder(order);
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text("Đã hủy đơn thành công. Đơn được gỡ khỏi luồng phân công."), // MS_CancelDelivery_04 / MSG_AS_05
