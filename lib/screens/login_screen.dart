@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/preference_service.dart';
+import '../models/user_model.dart';
 import 'admin/admin_home_screen.dart';
 import 'shipper/shipper_home_screen.dart';
-import 'customer_home_screen.dart';
+import 'customer/customer_home_screen.dart';
+import 'customer/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,9 +27,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Điền sẵn thông tin tài khoản demo Khách hàng
-    emailController.text = "customer@goship.vn";
-    passwordController.text = "password";
   }
 
   @override
@@ -51,16 +51,38 @@ class _LoginScreenState extends State<LoginScreen> {
     String? assignedRole;
     bool isSuccess = false;
 
-    // Giả lập mật khẩu chung là "password" cho tất cả các Role để dễ test
+    // 1. Kiểm tra tài khoản Demo
     if (inputPassword == "password") {
       if (inputEmail == "customer@goship.vn") {
         assignedRole = "CUSTOMER";
         isSuccess = true;
+        await PreferenceService.saveUser(UserModel(
+          fullName: "Khách Hàng",
+          email: "customer@goship.vn",
+          phone: "0901234567",
+          password: "password",
+          avatar: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+          gender: "Nam",
+          city: "TP. Hồ Chí Minh",
+        ));
       } else if (inputEmail == "admin@goship.vn") {
         assignedRole = "ADMIN";
         isSuccess = true;
       } else if (inputEmail == "shipper@goship.vn") {
         assignedRole = "SHIPPER";
+        isSuccess = true;
+      }
+    }
+
+    // 2. Nếu không phải tài khoản demo, kiểm tra tài khoản vừa đăng ký trong PreferenceService
+    if (!isSuccess) {
+      final isAuthSuccess = await AuthService.login(
+        email: inputEmail,
+        password: inputPassword,
+        rememberMe: rememberMe,
+      );
+      if (isAuthSuccess) {
+        assignedRole = "CUSTOMER";
         isSuccess = true;
       }
     }
@@ -159,9 +181,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextFormField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
+                    maxLength: 50,
                     decoration: InputDecoration(
                       labelText: "Email Khách hàng",
                       prefixIcon: Icon(Icons.email, color: primaryColor),
+                      counterText: '',
                       focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(color: primaryColor, width: 2.0),
                         borderRadius: BorderRadius.circular(15),
@@ -171,8 +195,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
+                      if (value == null || value.trim().isEmpty) {
                         return "Vui lòng nhập Email";
+                      }
+                      if (value.trim().length > 50) {
+                        return "Email tối đa 50 ký tự";
+                      }
+                      if (!value.contains('@')) {
+                        return "Email phải chứa ký tự @";
                       }
                       return null;
                     },
@@ -183,9 +213,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextFormField(
                     controller: passwordController,
                     obscureText: hidePassword,
+                    maxLength: 30,
                     decoration: InputDecoration(
                       labelText: "Mật khẩu",
                       prefixIcon: Icon(Icons.lock, color: primaryColor),
+                      counterText: '',
                       suffixIcon: IconButton(
                         icon: Icon(
                           hidePassword ? Icons.visibility : Icons.visibility_off,
@@ -208,6 +240,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return "Vui lòng nhập mật khẩu";
+                      }
+                      if (value.length > 30) {
+                        return "Mật khẩu tối đa 30 ký tự";
                       }
                       return null;
                     },
@@ -238,40 +273,21 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  
-                  // Demo Account Info
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.admin_panel_settings, color: primaryColor, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              "Tài khoản Demo (Pass: password):",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: primaryColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        const Text("• Điều phối viên: admin@goship.vn", style: TextStyle(fontWeight: FontWeight.bold)),
-                        const Text("• Khách hàng: customer@goship.vn"),
-                        const Text("• Shipper: shipper@goship.vn"),
-                      ],
-                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text("Chưa có tài khoản?"),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                          );
+                        },
+                        child: const Text("Đăng ký ngay"),
+                      ),
+                    ],
                   ),
                 ],
               ),
