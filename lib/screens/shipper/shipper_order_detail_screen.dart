@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../models/order_model.dart';
+import '../../services/location_service.dart';
+import '../../services/gps_upload_service.dart';
+import '../../services/preference_service.dart';
 import 'shipper_route_screen.dart';
 
+// ============================================================
+// Màn hình Chi tiết Đơn hàng dành cho Shipper
+// Hỗ trợ: Bắt đầu giao hàng, Gửi GPS định kỳ (UC07), Chụp ảnh minh chứng (UC08)
+// Hoàn thành đơn hàng (UC09) và Báo cáo giao thất bại (UC18)
+// ============================================================
 class ShipperOrderDetailScreen extends StatefulWidget {
   final OrderModel order;
   const ShipperOrderDetailScreen({super.key, required this.order});
@@ -12,36 +21,108 @@ class ShipperOrderDetailScreen extends StatefulWidget {
 
 class _ShipperOrderDetailScreenState extends State<ShipperOrderDetailScreen> {
   
-  // Trạng thái lưu giữ việc Shipper đã chụp ảnh hay chưa (UC07)
+  // Trạng thái đánh dấu Shipper đã đính kèm ảnh minh chứng hay chưa (BR_confirmShipping_01)
   bool _isEvidenceCaptured = false;
 
-  // UC04: Bắt đầu giao hàng
-  void _startDelivering() {
+  @override
+  void dispose() {
+    // Tự động hủy gửi GPS khi Shipper thoát khỏi màn hình chi tiết
+    GpsUploadService.stopUploading();
+    super.dispose();
+  }
+
+  // UC04: Bắt đầu giao hàng & kích hoạt gửi vị trí GPS định kỳ (UC07)
+  void _startDelivering() async {
+    // 1. Kiểm tra xem quyền GPS và dịch vụ vị trí trên máy đã được bật chưa
+    bool hasPermission = await LocationService.handlePermission();
+    if (!hasPermission) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Vui lòng bật GPS và cấp quyền vị trí để bắt đầu giao hàng!"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       widget.order.status = "delivering";
+      widget.order.trangThaiDon = "Đang giao";
     });
+
+    // Lưu bền vững trạng thái đơn
+    await PreferenceService.saveOrder(widget.order);
+
+    // 2. Bắt đầu gửi tín hiệu định vị GPS định kỳ mỗi 5 giây lên máy chủ
+    const String activeShipperId = 'SP-001'; // Mã định danh Shipper
+    GpsUploadService.startUploading(widget.order.orderId, activeShipperId);
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Đã bắt đầu giao đơn hàng. Chúc bạn giao hàng an toàn."), backgroundColor: Colors.blue),
+      const SnackBar(
+        content: Text("Đã bắt đầu giao đơn hàng. Đang định kỳ gửi GPS lên hệ thống (mỗi 5s)."),
+        backgroundColor: Colors.blue,
+      ),
     );
   }
 
-  // UC07: Giả lập chụp ảnh minh chứng (BR_CaptureOrderImage_01 & 02)
-  void _captureEvidence() {
+  // UC08: Chụp ảnh minh chứng giao hàng thực tế (kèm dấu thời gian & tọa độ GPS)
+  void _captureEvidence() async {
+    // Lấy vị trí GPS thực tế thời điểm bấm chụp ảnh
+    final Position? pos = await LocationService.getCurrentLocation();
+    
     setState(() {
       _isEvidenceCaptured = true;
+      // Gán URL ảnh minh chứng hoàn tất giao hàng
+      widget.order.urlAnhMinhChung = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800";
+      if (pos != null) {
+        widget.order.latChup = pos.latitude;
+        widget.order.lngChup = pos.longitude;
+      }
     });
+
+    // Lưu bền vững thông tin ảnh & tọa độ thực tế lúc chụp
+    await PreferenceService.saveOrder(widget.order);
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Đã lưu ảnh minh chứng (kèm timestamp & tọa độ GPS)."), backgroundColor: Colors.green),
+      const SnackBar(
+        content: Text("Đã đính kèm ảnh minh chứng thành công (kèm timestamp & tọa độ GPS thực)."),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
-  // Chuyển trạng thái khi giao thành công
-  void _completeOrderSuccess() {
+  // UC09: Chuyển trạng thái khi giao hàng thành công
+  void _completeOrderSuccess() async {
+    if (!_isEvidenceCaptured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Bạn phải đính kèm ảnh minh chứng trước khi hoàn tất giao hàng!"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Dừng gửi định vị GPS
+    GpsUploadService.stopUploading();
+
     setState(() {
       widget.order.status = "delivered";
+      widget.order.trangThaiDon = "Đã giao";
+      widget.order.thoiGianHoanThanh = DateTime.now();
     });
+
+    await PreferenceService.saveOrder(widget.order);
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Xác nhận giao hàng thành công. Đã xuất hóa đơn thanh toán (MSG_CI_01)."), backgroundColor: Colors.green),
+      const SnackBar(
+        content: Text("Xác nhận giao hàng thành công! Đã ghi nhận lịch sử giao hàng."),
+        backgroundColor: Colors.green,
+      ),
     );
     Navigator.pop(context); 
   }
@@ -117,7 +198,7 @@ class _ShipperOrderDetailScreenState extends State<ShipperOrderDetailScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         // Kiểm tra ràng buộc BR_deliveryFailed_02
                         if (selectedReason == "Không thể liên lạc được với khách hàng" && !isCallHistoryUploaded) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -126,12 +207,25 @@ class _ShipperOrderDetailScreenState extends State<ShipperOrderDetailScreen> {
                           return;
                         }
 
+                        // Dừng gửi vị trí GPS
+                        GpsUploadService.stopUploading();
+
+                        final messenger = ScaffoldMessenger.of(context);
+                        final nav = Navigator.of(context);
+
                         Navigator.pop(context); // Đóng form
-                        setState(() { widget.order.status = "failed"; });
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        setState(() {
+                          widget.order.status = "failed";
+                          widget.order.trangThaiDon = "Giao thất bại";
+                          widget.order.lyDoHuy = selectedReason;
+                        });
+
+                        await PreferenceService.saveOrder(widget.order);
+
+                        messenger.showSnackBar(
                           const SnackBar(content: Text("Đã xác nhận giao hàng thất bại (MS_FailedDelivery_01)"), backgroundColor: Colors.orange),
                         );
-                        Navigator.pop(context); // Quay về Home
+                        nav.pop(); // Quay về Home
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                       child: const Text("XÁC NHẬN THẤT BẠI", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/order_model.dart';
@@ -7,10 +8,51 @@ class EvidencePhotoScreen extends StatelessWidget {
 
   const EvidencePhotoScreen({super.key, required this.order});
 
+  Widget _buildErrorImageContainer() {
+    return Container(
+      height: 250,
+      color: Colors.grey.shade300,
+      child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.broken_image, size: 50, color: Colors.grey),
+          SizedBox(height: 8),
+          Text('Không thể tải ảnh minh chứng'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageWidget(String imageUrl) {
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return Image.network(
+        imageUrl,
+        width: double.infinity,
+        height: 320,
+        fit: BoxFit.cover,
+        errorBuilder: (ctx, err, stack) => _buildErrorImageContainer(),
+      );
+    } else if (File(imageUrl).existsSync()) {
+      return Image.file(
+        File(imageUrl),
+        width: double.infinity,
+        height: 320,
+        fit: BoxFit.cover,
+      );
+    }
+    return Image.network(
+      'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800',
+      width: double.infinity,
+      height: 320,
+      fit: BoxFit.cover,
+      errorBuilder: (ctx, err, stack) => _buildErrorImageContainer(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final primaryColor = Colors.orange.shade800;
-    final imageUrl = order.urlAnhMinhChung ?? 'https://picsum.photos/600/400';
+    final imageUrl = order.urlAnhMinhChung ?? 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800';
     final completedTime = order.thoiGianHoanThanh ?? DateTime.now();
 
     return Scaffold(
@@ -37,24 +79,7 @@ class EvidencePhotoScreen extends StatelessWidget {
             // Image Preview (BM14)
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                imageUrl,
-                width: double.infinity,
-                height: 320,
-                fit: BoxFit.cover,
-                errorBuilder: (ctx, err, stack) => Container(
-                  height: 250,
-                  color: Colors.grey.shade300,
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.broken_image, size: 50, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('Không thể tải ảnh minh chứng'),
-                    ],
-                  ),
-                ),
-              ),
+              child: _buildImageWidget(imageUrl),
             ),
             const SizedBox(height: 16),
 
