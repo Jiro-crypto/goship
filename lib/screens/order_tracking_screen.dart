@@ -50,17 +50,37 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
     if (!mounted) return;
 
+    // Resume simulation step based on real elapsed time since assignment
+    if (_routePoints.isNotEmpty) {
+      final int totalSteps = _routePoints.length;
+      final DateTime startTime = widget.order.thoiGianPhanCong ?? widget.order.thoiGianTao;
+      final int elapsedSec = DateTime.now().difference(startTime).inSeconds;
+      final int calculatedStep = (elapsedSec / 1.5).floor();
+
+      if (calculatedStep >= totalSteps - 1) {
+        _simulationStep = totalSteps - 1;
+        widget.order.trangThaiDon = "Đã giao";
+        widget.order.status = "delivered";
+        PreferenceService.saveOrder(widget.order);
+        _trackingStatusText = "Shipper đã đến nơi! Vui lòng nhận hàng.";
+      } else {
+        _simulationStep = calculatedStep < 0 ? 0 : calculatedStep;
+      }
+    }
+
     setState(() {
       _isLoadingRoute = false;
       if (_routePoints.isNotEmpty) {
-        _currentShipperPosition = _routePoints[0];
+        _currentShipperPosition = _routePoints[_simulationStep];
       } else {
         _currentShipperPosition = pickupPoint;
       }
       _initStaticMarkersAndPolylines(pickupPoint, deliveryPoint);
     });
 
-    _startShipperSimulation();
+    if (_simulationStep < _routePoints.length - 1) {
+      _startShipperSimulation();
+    }
   }
 
   @override
@@ -105,8 +125,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   void _startShipperSimulation() {
     if (_routePoints.isEmpty) return;
 
-    _trackingStatusText = "Shipper đã nhận đơn và lấy hàng tại điểm lấy!";
+    if (_simulationStep == 0) {
+      _trackingStatusText = "Shipper đã nhận đơn và lấy hàng tại điểm lấy!";
+    } else if (_simulationStep < _routePoints.length - 1) {
+      _trackingStatusText = "Shipper đã nhận hàng và đang trên đường giao tới bạn...";
+    }
 
+    _simulationTimer?.cancel();
     _simulationTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) {
       if (!mounted) return;
 
@@ -244,10 +269,21 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.orange.shade200),
                           ),
-                          child: Text(
-                            _trackingStatusText,
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 14),
-                            textAlign: TextAlign.center,
+                          child: Column(
+                            children: [
+                              Text(
+                                _trackingStatusText,
+                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 14),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (_simulationStep < _routePoints.length - 1 && _routePoints.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  "⏱️ Dự kiến giao trong: ~${widget.order.getEstimatedDeliveryMinutes(currentStep: _simulationStep, totalSteps: _routePoints.length)} phút",
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800, fontSize: 13),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                         const SizedBox(height: 16),

@@ -74,6 +74,16 @@ class InvoiceScreen extends StatelessWidget {
                         const Text('Chuyển khoản Ngân hàng', style: TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
+                    if (order.transactionId != null && order.transactionId!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Mã giao dịch:'),
+                          Text(order.transactionId!, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
+                        ],
+                      ),
+                    ],
                     const Divider(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,

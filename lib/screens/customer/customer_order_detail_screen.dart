@@ -204,6 +204,31 @@ class _CustomerOrderDetailScreenState extends State<CustomerOrderDetailScreen> {
             ),
             const SizedBox(height: 16),
 
+            if (order.trangThaiDon != 'Đã giao' && order.trangThaiDon != 'Đã hủy')
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.timer_outlined, color: Colors.blue.shade800, size: 24),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Thời gian giao dự kiến:', style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('~${order.getEstimatedDeliveryMinutes()} phút', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
             if (order.trangThaiDon == 'Đã hủy' && order.lyDoHuy != null)
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
