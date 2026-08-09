@@ -142,7 +142,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       ghiChu: _ghiChuController.text.trim(),
       tienCOD: double.tryParse(_tienCODController.text.trim()) ?? 0.0,
       phiShip: _phiShip > 0 ? _phiShip : 25000.0,
-      trangThaiDon: 'Chờ phân công',
+      trangThaiDon: 'Chờ giao',
       thoiGianTao: DateTime.now(),
       danhMucHang: _danhMucController.text.trim().isNotEmpty ? _danhMucController.text.trim() : 'Hàng hóa chung',
       soLuong: int.tryParse(_soLuongController.text) ?? 1,

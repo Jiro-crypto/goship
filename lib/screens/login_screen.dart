@@ -22,7 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool isLoading = false;
   bool hidePassword = true;
-  bool rememberMe = false;
+  bool rememberMe = true;
 
   @override
   void initState() {
@@ -71,6 +71,11 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (inputEmail == "shipper@goship.vn") {
         assignedRole = "SHIPPER";
         isSuccess = true;
+      }
+
+      if (isSuccess) {
+        if (rememberMe) await PreferenceService.setLogin(true);
+        await PreferenceService.setSessionLogin(true);
       }
     }
 
@@ -279,11 +284,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       const Text("Chưa có tài khoản?"),
                       TextButton(
-                        onPressed: () {
-                          Navigator.push(
+                        onPressed: () async {
+                          final result = await Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => const RegisterScreen()),
                           );
+                          if (result != null && result is Map<String, String>) {
+                            setState(() {
+                              emailController.text = result['email'] ?? '';
+                              passwordController.text = result['password'] ?? '';
+                            });
+                          }
                         },
                         child: const Text("Đăng ký ngay"),
                       ),

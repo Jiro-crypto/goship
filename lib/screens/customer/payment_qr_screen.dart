@@ -94,7 +94,7 @@ class _PaymentQRScreenState extends State<PaymentQRScreen> {
     // Save transaction ID and order permanently to SharedPreferences & memory
     final String txnId = "TXN-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}";
     widget.order.transactionId = txnId;
-    widget.order.trangThaiDon = 'Chờ phân công';
+    widget.order.trangThaiDon = 'Chờ giao';
     await PreferenceService.saveOrder(widget.order);
 
     if (!mounted) return;

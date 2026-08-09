@@ -313,10 +313,21 @@ class _CustomerOrderDetailScreenState extends State<CustomerOrderDetailScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Tiền thu COD:'),
+                        const Text('Phí vận chuyển (Khách trả):'),
                         Text(
-                          currencyFormatter.format(order.phiShip > 0 ? order.phiShip : (order.tienCOD > 0 ? order.tienCOD : 25000.0)),
+                          currencyFormatter.format(order.phiShip),
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Tiền thu hộ COD (Shipper thu):'),
+                        Text(
+                          currencyFormatter.format(order.tienCOD),
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800),
                         ),
                       ],
                     ),
@@ -324,9 +335,9 @@ class _CustomerOrderDetailScreenState extends State<CustomerOrderDetailScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('TỔNG THU COD:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('TỔNG GIÁ TRỊ ĐƠN HÀNG:', style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(
-                          currencyFormatter.format(order.phiShip > 0 ? order.phiShip : (order.tienCOD > 0 ? order.tienCOD : 25000.0)),
+                          currencyFormatter.format(order.phiShip + order.tienCOD),
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: primaryColor),
                         ),
                       ],
