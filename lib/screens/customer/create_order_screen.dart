@@ -24,6 +24,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _danhMucController = TextEditingController();
   final _khoiLuongController = TextEditingController();
   final _soLuongController = TextEditingController(text: '1');
+  final _tienCODController = TextEditingController(text: '0');
   final _ghiChuController = TextEditingController();
 
   double _phiShip = 0;
@@ -42,6 +43,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _danhMucController.dispose();
     _khoiLuongController.dispose();
     _soLuongController.dispose();
+    _tienCODController.dispose();
     _ghiChuController.dispose();
     super.dispose();
   }
@@ -138,7 +140,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       lngGiao: _lngGiao,
       khoiLuong: double.tryParse(_khoiLuongController.text) ?? 1.0,
       ghiChu: _ghiChuController.text.trim(),
-      tienCOD: _phiShip > 0 ? _phiShip : 25000.0,
+      tienCOD: double.tryParse(_tienCODController.text.trim()) ?? 0.0,
       phiShip: _phiShip > 0 ? _phiShip : 25000.0,
       trangThaiDon: 'Chờ phân công',
       thoiGianTao: DateTime.now(),
@@ -264,6 +266,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Vui lòng nhập địa chỉ giao hàng';
                   if (v.trim().length > 100) return 'Địa chỉ tối đa 100 ký tự';
+                  if (v.trim().toLowerCase() == _diaChiLayController.text.trim().toLowerCase()) {
+                    return 'Địa chỉ giao không được trùng địa chỉ lấy';
+                  }
                   return null;
                 },
                 onChanged: (v) {
@@ -295,7 +300,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         prefixIcon: Icon(Icons.scale),
                         border: OutlineInputBorder(),
                       ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Nhập trọng lượng' : null,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Nhập trọng lượng';
+                        final d = double.tryParse(v.trim());
+                        if (d == null || d <= 0) return 'Phải > 0 kg';
+                        return null;
+                      },
                       onChanged: (_) => _calculateShippingFee(),
                     ),
                   ),
@@ -304,15 +314,37 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     child: TextFormField(
                       controller: _soLuongController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: const InputDecoration(
                         labelText: 'Số lượng',
                         prefixIcon: Icon(Icons.format_list_numbered),
                         border: OutlineInputBorder(),
                       ),
+                      validator: (v) {
+                        if (v != null && v.trim().isNotEmpty) {
+                          final n = int.tryParse(v.trim());
+                          if (n == null || n <= 0) return 'Phải > 0';
+                        }
+                        return null;
+                      },
                       onChanged: (_) => _calculateShippingFee(),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _tienCODController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                maxLength: 9,
+                decoration: const InputDecoration(
+                  labelText: 'Tiền thu hộ COD (đ)',
+                  prefixIcon: Icon(Icons.monetization_on, color: Colors.green),
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                  hintText: 'Nhập tiền hàng nhờ Shipper thu hộ (nếu có)',
+                ),
               ),
               const SizedBox(height: 12),
               TextFormField(

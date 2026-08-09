@@ -1,4 +1,29 @@
+import 'package:geolocator/geolocator.dart';
+
 class OrderModel {
+
+  int getEstimatedDeliveryMinutes({int currentStep = 0, int totalSteps = 10}) {
+    if (trangThaiDon == 'Đã giao' || trangThaiDon == 'Đã hủy') return 0;
+
+    double distanceKm = 1.5;
+    if (latLay != 0 && lngLay != 0 && latGiao != 0 && lngGiao != 0) {
+      double distInMeters = Geolocator.distanceBetween(latLay, lngLay, latGiao, lngGiao);
+      distanceKm = distInMeters / 1000;
+      if (distanceKm < 0.2) distanceKm = 0.2;
+    }
+
+    // Accurate Urban Speed: 5 mins handling + 2 mins per km
+    int totalMinutes = (5 + (distanceKm * 2.0)).round();
+
+    if (totalSteps > 1 && currentStep > 0) {
+      double remainingRatio = (totalSteps - 1 - currentStep) / (totalSteps - 1);
+      if (remainingRatio < 0) remainingRatio = 0;
+      int remainingMin = (totalMinutes * remainingRatio).ceil();
+      return remainingMin < 1 ? 1 : remainingMin;
+    }
+
+    return totalMinutes;
+  }
   final String orderId;
   final String maKH;
   String maShipper;
@@ -27,6 +52,9 @@ class OrderModel {
   final String? urlAnhMinhChung;
   final String senderName;
   final String senderPhone;
+  double? latChup;
+  double? lngChup;
+  String? transactionId;
 
   OrderModel({
     String? orderId,
@@ -69,6 +97,9 @@ class OrderModel {
     this.urlAnhMinhChung,
     this.senderName = 'GoShip Store',
     this.senderPhone = '19001000',
+    this.latChup,
+    this.lngChup,
+    this.transactionId,
   })  : orderId = orderId ?? id ?? '',
         tenNguoiNhan = tenNguoiNhan ?? receiverName ?? '',
         sdtNguoiNhan = sdtNguoiNhan ?? receiverPhone ?? '',
@@ -161,6 +192,9 @@ class OrderModel {
       "urlAnhMinhChung": urlAnhMinhChung,
       "senderName": senderName,
       "senderPhone": senderPhone,
+      "latChup": latChup,
+      "lngChup": lngChup,
+      "transactionId": transactionId,
     };
   }
 
@@ -206,6 +240,9 @@ class OrderModel {
       urlAnhMinhChung: json["urlAnhMinhChung"]?.toString(),
       senderName: json["senderName"]?.toString() ?? "GoShip Store",
       senderPhone: json["senderPhone"]?.toString() ?? "19001000",
+      latChup: json["latChup"] != null ? _parseDouble(json["latChup"]) : null,
+      lngChup: json["lngChup"] != null ? _parseDouble(json["lngChup"]) : null,
+      transactionId: json["transactionId"]?.toString(),
     );
   }
 }

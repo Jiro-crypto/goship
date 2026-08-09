@@ -89,7 +89,9 @@ class EvidencePhotoScreen extends StatelessWidget {
                     children: [
                       const Icon(Icons.my_location, size: 18, color: Colors.red),
                       const SizedBox(width: 6),
-                      Text('Tọa độ GPS: ${order.latGiao.toStringAsFixed(5)}, ${order.lngGiao.toStringAsFixed(5)}'),
+                      Text(
+                        'Tọa độ GPS thực tế: ${(order.latChup ?? order.latGiao).toStringAsFixed(5)}, ${(order.lngChup ?? order.lngGiao).toStringAsFixed(5)}',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),

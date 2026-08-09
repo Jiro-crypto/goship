@@ -36,6 +36,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final emailInput = _emailController.text.trim();
+      final bool exists = await AuthService.isExistEmail(emailInput);
+      if (exists) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Email này đã được đăng ký! Vui lòng dùng Email khác hoặc Đăng nhập.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       final user = UserModel(
         fullName: _nameController.text.trim(),
         email: _emailController.text.trim(),

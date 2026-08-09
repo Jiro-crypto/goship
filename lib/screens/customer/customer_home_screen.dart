@@ -38,7 +38,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   List<OrderModel> get _userOrders {
-    return mockOrders;
+    if (_user == null) return mockOrders;
+    final userEmail = _user!.email.trim().toLowerCase();
+    final userPhone = _user!.phone.trim();
+
+    return mockOrders.where((o) {
+      final maKH = o.maKH.trim().toLowerCase();
+      if (userEmail.isNotEmpty && maKH == userEmail) return true;
+      if (userPhone.isNotEmpty && (maKH == userPhone || o.senderPhone.trim() == userPhone)) return true;
+      // Default demo accounts fallback
+      if (userEmail == 'customer@goship.vn' && (maKH == 'kh-001' || maKH == 'khachhang')) return true;
+      return false;
+    }).toList();
   }
 
   int get _totalOrders => _userOrders.length;
