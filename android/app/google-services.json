@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "916905766262",
+    "project_id": "logiroute-2a957",
+    "storage_bucket": "logiroute-2a957.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:916905766262:android:6f0f81610766b69e729e57",
+        "android_client_info": {
+          "package_name": "com.example.goship"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAt-pBPbeRTgAbZO1tn646pwvcZ8IAFL8E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

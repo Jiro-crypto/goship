@@ -1,112 +1,67 @@
-import '../models/user_model.dart';
-import 'preference_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthService {
-  /// ============================
-  /// REGISTER MOCK USER IF NONE EXISTS
-  /// ============================
-  static Future<void> initMockUser() async {
-    bool hasSavedUser = await PreferenceService.hasUser();
-    if (!hasSavedUser) {
-      UserModel defaultShipper = UserModel(
-        fullName: "Shipper Pro",
-        email: "shipper@goship.vn",
-        phone: "0987654321",
-        password: "password",
-        avatar: "https://cdn-icons-png.flaticon.com/512/2922/2922506.png",
-        gender: "Nam",
-        city: "Hà Nội",
-      );
-      await PreferenceService.saveUser(defaultShipper);
-    }
-  }
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// ============================
-  /// REGISTER
-  /// ============================
-  static Future<bool> register(UserModel user) async {
+  // Đăng nhập
+  static Future<bool> login(String email, String password) async {
     try {
-      await PreferenceService.saveUser(user);
+      UserCredential userCred = await _auth.signInWithEmailAndPassword(
+        email: email, 
+        password: password
+      );
+      // Lưu trạng thái đăng nhập (có thể dùng SharedPreferences)
       return true;
     } catch (e) {
-      print("Register Error: $e");
+      print("Login error: $e");
       return false;
     }
   }
 
-  /// ============================
-  /// LOGIN
-  /// ============================
-  static Future<bool> login({
-    required String email,
-    required String password,
-    required bool rememberMe,
-  }) async {
+  // Đăng ký (khách hàng)
+  static Future<bool> registerCustomer(String email, String password, String name, String phone) async {
     try {
-      await initMockUser(); // Ensure default user exists
-
-      UserModel? user = await PreferenceService.getUser();
-      if (user == null) {
-        return false;
-      }
-
-      if (user.email == email && user.password == password) {
-        if (rememberMe) {
-          await PreferenceService.setLogin(true);
-        }
-        await PreferenceService.setSessionLogin(true);
-        await PreferenceService.addHistory(email);
-        return true;
-      }
-      return false;
+      UserCredential userCred = await _auth.createUserWithEmailAndPassword(
+        email: email, 
+        password: password
+      );
+      String uid = userCred.user!.uid;
+      
+      // Lưu thông tin vào Firestore
+      await _firestore.collection('customers').doc(uid).set({
+        'uid': uid,
+        'name': name,
+        'phone': phone,
+        'email': email,
+        'address': '',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return true;
     } catch (e) {
-      print("Login Error: $e");
+      print("Register error: $e");
       return false;
     }
   }
 
-  /// ============================
-  /// CURRENT USER
-  /// ============================
-  static Future<UserModel?> currentUser() async {
-    return await PreferenceService.getUser();
-  }
-
-  /// ============================
-  /// CHECK LOGIN
-  /// ============================
-  static Future<bool> isLogin() async {
-    return await PreferenceService.isLogin();
-  }
-
-  /// ============================
-  /// LOGOUT
-  /// ============================
+  // Đăng xuất
   static Future<void> logout() async {
-    await PreferenceService.clearLogin();
+    await _auth.signOut();
   }
 
-  /// ============================
-  /// LOGIN HISTORY
-  /// ============================
-  static Future<List<String>> getHistory() async {
-    return await PreferenceService.getHistory();
+  // Kiểm tra đăng nhập
+  static Future<bool> isLogin() async {
+    return _auth.currentUser != null;
   }
 
-  /// ============================
-  /// CHECK IF EMAIL EXISTS
-  /// ============================
-  static Future<bool> isExistEmail(String email) async {
-    try {
-      await initMockUser();
-      UserModel? user = await PreferenceService.getUser();
-      if (user == null) {
-        return false;
-      }
-      return user.email.trim().toLowerCase() == email.trim().toLowerCase();
-    } catch (e) {
-      print("Check Email Error: $e");
-      return false;
-    }
+  // Lấy user hiện tại
+  static User? getCurrentUser() {
+    return _auth.currentUser;
+  }
+
+  // Lấy UID
+  static String? getCurrentUid() {
+    return _auth.currentUser?.uid;
   }
 }
