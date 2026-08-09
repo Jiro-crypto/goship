@@ -13,7 +13,7 @@ class PaymentSuccessScreen extends StatelessWidget {
     final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
     final primaryColor = Colors.orange.shade800;
     final totalAmount = order.phiShip > 0 ? order.phiShip : 25000.0;
-    final transactionId = 'TX-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+    final transactionId = order.transactionId ?? 'TXN-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
 
     return Scaffold(
       backgroundColor: Colors.white,

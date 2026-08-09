@@ -70,7 +70,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, {
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text.trim(),
+        });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

@@ -328,9 +328,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  'Tiền thu COD: ${currencyFormatter.format(order.phiShip > 0 ? order.phiShip : 25000.0)}',
+                                  'Phí ship: ${currencyFormatter.format(order.phiShip)}',
                                   style: TextStyle(fontSize: 13, color: primaryColor, fontWeight: FontWeight.bold),
                                 ),
+                                if (order.tienCOD > 0)
+                                  Text(
+                                    'COD: ${currencyFormatter.format(order.tienCOD)}',
+                                    style: TextStyle(fontSize: 13, color: Colors.green.shade800, fontWeight: FontWeight.bold),
+                                  ),
                               ],
                             ),
                           ],
