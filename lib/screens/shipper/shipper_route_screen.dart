@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
 import '../../models/order_model.dart';
+import '../../services/route_service.dart';
 
 class ShipperRouteScreen extends StatefulWidget {
   final OrderModel order;
@@ -33,7 +32,7 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
     super.initState();
 
     // Validate MSG_VR_04: Chỉ xem được khi đang giao
-    if (widget.order.status != 'delivering') {
+    if (widget.order.status != OrderStatus.delivering) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -55,44 +54,27 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
     super.dispose();
   }
 
-  // GỌI API OSRM ĐỂ LẤY TUYẾN ĐƯỜNG THỰC TẾ
+  // SỬ DỤNG ROUTE SERVICE CHUNG CHO CẢ KHÁCH HÀNG & SHIPPER
   Future<void> _fetchRouteFromOSRM() async {
-    // API OSRM yêu cầu tọa độ gửi lên theo thứ tự: Kinh độ (Lng), Vĩ độ (Lat)
-    final startLng = widget.order.pickupLongitude;
-    final startLat = widget.order.pickupLatitude;
-    final endLng = widget.order.deliveryLongitude;
-    final endLat = widget.order.deliveryLatitude;
+    final startPoint = LatLng(widget.order.pickupLat ?? 10.7719, widget.order.pickupLng ?? 106.7038);
+    final endPoint = LatLng(widget.order.deliveryLat ?? 10.7905, widget.order.deliveryLng ?? 106.6775);
 
-    final url = 'https://router.project-osrm.org/route/v1/driving/$startLng,$startLat;$endLng,$endLat?overview=full&geometries=geojson';
+    final RouteInfo routeInfo = await RouteService.getRouteInfo(startPoint, endPoint);
 
-    try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final route = data['routes'][0];
-        final List coordinates = route['geometry']['coordinates'];
-        
-        // Trích xuất ETA (giây) và Quãng đường (mét) từ JSON
-        final double durationSeconds = (route['duration'] as num).toDouble();
-        final double distanceMeters = (route['distance'] as num).toDouble();
+    if (!mounted) return;
 
-        setState(() {
-          // Parse tọa độ GeoJSON (Lng, Lat) thành LatLng (Lat, Lng) của flutter_map
-          _routePoints = coordinates.map((c) => LatLng(c[1], c[0])).toList();
-          
-          _etaText = "${(durationSeconds / 60).ceil()} phút";
-          _distanceText = "${(distanceMeters / 1000).toStringAsFixed(1)} km";
-          
-          _isLoadingRoute = false;
-          _currentShipperPosition = _routePoints[0];
-          
-          _initStaticMarkersAndPolylines();
-          _startShipperSimulation();
-        });
-      } else {
-        _handleRoutingFallback();
-      }
-    } catch (e) {
+    if (routeInfo.isSuccess) {
+      setState(() {
+        _routePoints = routeInfo.points;
+        _etaText = "${routeInfo.durationMinutes} phút";
+        _distanceText = "${routeInfo.distanceKm.toStringAsFixed(1)} km";
+        _isLoadingRoute = false;
+        _currentShipperPosition = _routePoints[0];
+
+        _initStaticMarkersAndPolylines();
+        _startShipperSimulation();
+      });
+    } else {
       _handleRoutingFallback();
     }
   }
@@ -101,8 +83,8 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
   void _handleRoutingFallback() {
     setState(() { 
       _routePoints = [
-        LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
-        LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude),
+        LatLng(widget.order.pickupLat ?? 10.7719, widget.order.pickupLng ?? 106.7038),
+        LatLng(widget.order.deliveryLat ?? 10.7905, widget.order.deliveryLng ?? 106.6775),
       ];
       _etaText = "Không xác định";
       _distanceText = "N/A";
@@ -123,13 +105,13 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
       ..clear()
       ..add(
         Marker(
-          point: LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
+          point: LatLng(widget.order.pickupLat ?? 10.7719, widget.order.pickupLng ?? 106.7038),
           child: const Icon(Icons.store, color: Colors.orange, size: 32),
         ),
       )
       ..add(
         Marker(
-          point: LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude),
+          point: LatLng(widget.order.deliveryLat ?? 10.7905, widget.order.deliveryLng ?? 106.6775),
           child: const Icon(Icons.location_on, color: Colors.red, size: 32),
         ),
       );
@@ -221,7 +203,7 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.order.status != 'delivering') {
+    if (widget.order.status != OrderStatus.delivering) {
       return const Scaffold(); 
     }
 

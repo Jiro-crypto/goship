@@ -30,6 +30,15 @@ class ShipperRepository {
         });
   }
 
+  // Stream toàn bộ danh sách Shipper (cho Dashboard)
+  Stream<List<ShipperModel>> watchAllShippers() {
+    return _shippersCollection
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs.map((doc) => ShipperModel.fromFirestore(doc)).toList();
+        });
+  }
+
   // Lấy thông tin Shipper theo ID
   Future<ShipperModel?> getShipperById(String shipperId) async {
     try {
@@ -62,4 +71,20 @@ class ShipperRepository {
       return ShipperModel.fromFirestore(doc);
     });
   }
-}
+
+  // UC17/UC03: Tăng biến đếm số lần từ chối trong ngày
+  Future<void> updateShipperRejectionCount(String shipperId) async {
+    final String todayStr = DateTime.now().toUtc().toString().substring(0, 10);
+    final doc = await _shippersCollection.doc(shipperId).get();
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final String? lastDate = data['rejectionCountDate'];
+    final int currentCount = data['dailyRejectionCount'] ?? 0;
+    final int todayCount = (lastDate == todayStr) ? currentCount : 0;
+
+    await _shippersCollection.doc(shipperId).update({
+      'dailyRejectionCount': todayCount + 1,
+      'rejectionCountDate': todayStr,
+      'lastUpdated': FieldValue.serverTimestamp(),
+    });
+  }
+}

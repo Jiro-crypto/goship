@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 import 'invoice_model.dart';
 
 enum OrderStatus {
@@ -167,6 +168,34 @@ class OrderModel {
       cancelledBy: data['cancelledBy'],
       invoice: InvoiceModel.fromMap(data['invoice']),
     );
+  }
+
+  int getEstimatedDeliveryMinutes({int currentStep = 0, int totalSteps = 10}) {
+    if (status == OrderStatus.delivered || status == OrderStatus.cancelled) return 0;
+
+    double distanceKm = 1.5;
+    final lat1 = pickupLat ?? 0;
+    final lng1 = pickupLng ?? 0;
+    final lat2 = deliveryLat ?? 0;
+    final lng2 = deliveryLng ?? 0;
+
+    if (lat1 != 0 && lng1 != 0 && lat2 != 0 && lng2 != 0) {
+      double distInMeters = Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
+      distanceKm = distInMeters / 1000;
+      if (distanceKm < 0.2) distanceKm = 0.2;
+    }
+
+    // Accurate Urban Speed: 5 mins handling + 2 mins per km
+    int totalMinutes = (5 + (distanceKm * 2.0)).round();
+
+    if (totalSteps > 1 && currentStep > 0) {
+      double remainingRatio = (totalSteps - 1 - currentStep) / (totalSteps - 1);
+      if (remainingRatio < 0) remainingRatio = 0;
+      int remainingMin = (totalMinutes * remainingRatio).ceil();
+      return remainingMin < 1 ? 1 : remainingMin;
+    }
+
+    return totalMinutes;
   }
 
   // Model -> Map (để lưu lên Firestore)

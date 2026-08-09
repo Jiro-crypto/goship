@@ -4,6 +4,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/order_model.dart';
+import '../models/shipper_model.dart';
+import '../data/repositories/shipper_repository.dart';
+import '../data/repositories/order_repository.dart';
+import '../services/route_service.dart';
+import 'OSMMap_screen.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   final OrderModel order;
@@ -18,73 +23,131 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   Timer? _simulationTimer;
   int _simulationStep = 0;
   LatLng? _currentShipperPosition;
-  String _trackingStatusText = "Đang tìm Shipper...";
+  String _trackingStatusText = "Shipper đã nhận đơn và lấy hàng tại điểm lấy!";
+  bool _isLoadingRoute = true;
 
   final List<Marker> _markers = [];
   final List<Polyline> _polylines = [];
   final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+  List<LatLng> _routePoints = [];
 
-  // Lộ trình giả lập di chuyển của Shipper tại TP.HCM
-  late List<LatLng> _routePoints;
+  // Dữ liệu shipper từ Firebase (realtime)
+  ShipperModel? _shipper;
+  StreamSubscription<ShipperModel?>? _shipperSub;
 
   @override
   void initState() {
     super.initState();
+    _initRouteAndMap();
+    _listenToShipperLocation();
+  }
 
-    // Khởi tạo lộ trình từ Nhà thờ Đức Bà -> Gong Cha Q1 -> Lê Văn Sỹ Q3
-    _routePoints = [
-      const LatLng(10.7797, 106.6990), // Xuất phát: Nhà thờ Đức Bà
-      const LatLng(10.7760, 106.7015), // Trên đường đến quán
-      LatLng(
-        widget.order.pickupLatitude,
-        widget.order.pickupLongitude,
-      ), // Trạm 1: Gong Cha Q1 (Lấy hàng)
-      const LatLng(10.7765, 106.6945), // Ngã tư Pasteur/Nguyễn Thị Minh Khai
-      const LatLng(10.7812, 106.6885), // Đường Trần Quốc Thảo
-      const LatLng(10.7865, 106.6820), // Ngã tư Kỳ Đồng/Lê Văn Sỹ
-      LatLng(
-        widget.order.deliveryLatitude,
-        widget.order.deliveryLongitude,
-      ), // Trạm cuối: 252 Lê Văn Sỹ (Giao hàng)
-    ];
+  /// Lắng nghe vị trí Shipper từ Firebase realtime
+  void _listenToShipperLocation() {
+    final shipperId = widget.order.shipperId;
+    if (shipperId == null || shipperId.isEmpty) return;
 
-    _currentShipperPosition = _routePoints[0];
-    _initStaticMarkersAndPolylines();
+    _shipperSub = ShipperRepository().watchShipperLocation(shipperId).listen((shipperData) {
+      if (!mounted) return;
+      setState(() {
+        _shipper = shipperData;
+        // Nếu Shipper có GPS thực tế từ Firebase, ưu tiên dùng
+        if (shipperData?.currentLat != null && shipperData?.currentLng != null) {
+          _currentShipperPosition = LatLng(shipperData!.currentLat!, shipperData.currentLng!);
+          _updateShipperMarker();
+        }
+      });
+    });
+  }
 
-    if (widget.order.status == "delivering") {
+  Future<void> _initRouteAndMap() async {
+    final pickupPoint = (widget.order.pickupLat ?? 0) != 0
+        ? LatLng(widget.order.pickupLat!, widget.order.pickupLng!)
+        : const LatLng(10.7719, 106.7038);
+    final deliveryPoint = (widget.order.deliveryLat ?? 0) != 0
+        ? LatLng(widget.order.deliveryLat!, widget.order.deliveryLng!)
+        : const LatLng(10.7905, 106.6775);
+
+    // Lấy tuyến đường thực tế từ OSRM
+    final RouteInfo routeInfo = await RouteService.getRouteInfo(pickupPoint, deliveryPoint);
+    _routePoints = routeInfo.points;
+
+    if (!mounted) return;
+
+    if (!routeInfo.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Không thể kết nối máy chủ OSRM, đang hiển thị đường chim bay."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+
+    // Resume simulation dựa trên thời gian đã trôi qua từ lúc phân công
+    if (_routePoints.isNotEmpty) {
+      final int totalSteps = _routePoints.length;
+      final DateTime startTime = widget.order.assignedAt ?? widget.order.createdAt;
+      final int elapsedSec = DateTime.now().difference(startTime).inSeconds;
+      final int calculatedStep = (elapsedSec / 1.5).floor();
+
+      if (calculatedStep >= totalSteps - 1) {
+        _simulationStep = totalSteps - 1;
+        _trackingStatusText = "Shipper đã đến nơi! Vui lòng nhận hàng.";
+        // Cập nhật trạng thái lên Firebase nếu chưa được cập nhật
+        if (widget.order.status != OrderStatus.delivered) {
+          OrderRepository().confirmDeliverySuccess(
+            orderId: widget.order.orderId,
+            confirmLat: deliveryPoint.latitude,
+            confirmLng: deliveryPoint.longitude,
+          );
+        }
+      } else {
+        _simulationStep = calculatedStep < 0 ? 0 : calculatedStep;
+      }
+    }
+
+    setState(() {
+      _isLoadingRoute = false;
+      if (_routePoints.isNotEmpty) {
+        // Chỉ dùng simulation nếu chưa có GPS thực từ Firebase
+        if (_currentShipperPosition == null) {
+          _currentShipperPosition = _routePoints[_simulationStep];
+        }
+      } else {
+        _currentShipperPosition ??= pickupPoint;
+      }
+      _initStaticMarkersAndPolylines(pickupPoint, deliveryPoint);
+    });
+
+    if (_simulationStep < _routePoints.length - 1) {
       _startShipperSimulation();
-    } else {
-      _trackingStatusText = widget.order.status == "delivered"
-          ? "Đơn hàng đã hoàn thành giao!"
-          : "Đơn hàng đang chờ xử lý";
     }
   }
 
   @override
   void dispose() {
     _simulationTimer?.cancel();
+    _shipperSub?.cancel();
     super.dispose();
   }
 
-  void _initStaticMarkersAndPolylines() {
+  void _initStaticMarkersAndPolylines(LatLng pickupPoint, LatLng deliveryPoint) {
     _markers
       ..clear()
       ..add(
         Marker(
-          point: LatLng(
-            widget.order.pickupLatitude,
-            widget.order.pickupLongitude,
-          ),
-          child: const Icon(Icons.location_on, color: Colors.orange, size: 32),
+          point: pickupPoint,
+          width: 40,
+          height: 40,
+          child: const Icon(Icons.storefront, color: Colors.orange, size: 36),
         ),
       )
       ..add(
         Marker(
-          point: LatLng(
-            widget.order.deliveryLatitude,
-            widget.order.deliveryLongitude,
-          ),
-          child: const Icon(Icons.location_on, color: Colors.red, size: 32),
+          point: deliveryPoint,
+          width: 40,
+          height: 40,
+          child: const Icon(Icons.location_on, color: Colors.green, size: 38),
         ),
       );
 
@@ -92,49 +155,44 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       ..clear()
       ..add(
         Polyline(
-          points: [
-            LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
-            LatLng(
-              widget.order.deliveryLatitude,
-              widget.order.deliveryLongitude,
-            ),
-          ],
-          color: Colors.grey.shade400,
-          strokeWidth: 3.0,
+          points: _routePoints,
+          color: Colors.orange.shade800,
+          strokeWidth: 5.0,
         ),
       );
 
-    // Thêm marker shipper tại điểm xuất phát
     _updateShipperMarker();
   }
 
   void _startShipperSimulation() {
-    _trackingStatusText = "Shipper đang di chuyển đến nhà hàng lấy món...";
+    if (_routePoints.isEmpty) return;
 
-    _simulationTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    if (_simulationStep == 0) {
+      _trackingStatusText = "Shipper đã nhận đơn và lấy hàng tại điểm lấy!";
+    } else if (_simulationStep < _routePoints.length - 1) {
+      _trackingStatusText = "Shipper đã nhận hàng và đang trên đường giao tới bạn...";
+    }
+
+    _simulationTimer?.cancel();
+    _simulationTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) {
       if (!mounted) return;
 
       setState(() {
         if (_simulationStep < _routePoints.length - 1) {
           _simulationStep++;
-          _currentShipperPosition = _routePoints[_simulationStep];
+          // Chỉ update simulation nếu chưa có GPS thực từ Firebase
+          if (_shipper?.currentLat == null) {
+            _currentShipperPosition = _routePoints[_simulationStep];
+          }
 
-          // Cập nhật trạng thái hiển thị dựa trên vị trí shipper
-          if (_simulationStep == 2) {
-            _trackingStatusText =
-                "Shipper đã đến quán Gong Cha và đang nhận món...";
-          } else if (_simulationStep > 2 &&
-              _simulationStep < _routePoints.length - 1) {
-            _trackingStatusText =
-                "Shipper đã nhận hàng và đang trên đường giao tới bạn...";
+          if (_simulationStep > 0 && _simulationStep < _routePoints.length - 1) {
+            _trackingStatusText = "Shipper đã nhận hàng và đang trên đường giao tới bạn...";
           } else if (_simulationStep == _routePoints.length - 1) {
             _trackingStatusText = "Shipper đã đến nơi! Vui lòng nhận hàng.";
-            widget.order.status = "delivered"; // Hoàn thành đơn
             _simulationTimer?.cancel();
           }
 
           _updateShipperMarker();
-          _updateRoutePolylines();
           _focusCameraOnShipper();
         }
       });
@@ -144,27 +202,24 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   void _updateShipperMarker() {
     if (_currentShipperPosition == null) return;
 
-    _markers.removeWhere((m) => m.point == _currentShipperPosition);
+    _markers.removeWhere((m) => m.key == const Key('shipper_marker'));
     _markers.add(
       Marker(
+        key: const Key('shipper_marker'),
         point: _currentShipperPosition!,
-        child: const Icon(Icons.motorcycle, color: Colors.blue, size: 30),
+        width: 46,
+        height: 46,
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(blurRadius: 4, color: Colors.black26)],
+          ),
+          child: const Icon(Icons.directions_bike, color: Colors.blue, size: 32),
+        ),
       ),
     );
-  }
-
-  void _updateRoutePolylines() {
-    List<LatLng> pointsTraveled = _routePoints.sublist(0, _simulationStep + 1);
-
-    _polylines
-      ..clear()
-      ..add(
-        Polyline(
-          points: pointsTraveled,
-          color: Colors.orange.shade800,
-          strokeWidth: 5.0,
-        ),
-      );
   }
 
   void _focusCameraOnShipper() {
@@ -172,110 +227,225 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     _mapController.move(_currentShipperPosition!, 14.5);
   }
 
-  void _fitAllMarkers() {
-    double minLat = widget.order.pickupLatitude;
-    double maxLat = widget.order.pickupLatitude;
-    double minLng = widget.order.pickupLongitude;
-    double maxLng = widget.order.pickupLongitude;
-
-    if (widget.order.deliveryLatitude < minLat) {
-      minLat = widget.order.deliveryLatitude;
-    }
-    if (widget.order.deliveryLatitude > maxLat) {
-      maxLat = widget.order.deliveryLatitude;
-    }
-    if (widget.order.deliveryLongitude < minLng) {
-      minLng = widget.order.deliveryLongitude;
-    }
-    if (widget.order.deliveryLongitude > maxLng) {
-      maxLng = widget.order.deliveryLongitude;
-    }
-
-    _mapController.fitCamera(
-      CameraFit.bounds(
-        bounds: LatLngBounds(
-          LatLng(minLat - 0.005, minLng - 0.005),
-          LatLng(maxLat + 0.005, maxLng + 0.005),
-        ),
-        padding: const EdgeInsets.all(60),
-      ),
-    );
+  int _getEstimatedMinutes() {
+    if (_routePoints.isEmpty) return 0;
+    final remaining = _routePoints.length - _simulationStep;
+    // 1.5s mỗi bước (simulation), scale sang phút thực tế
+    final estimatedSeconds = remaining * 1.5;
+    return (estimatedSeconds / 60).ceil().clamp(1, 60);
   }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = Colors.orange.shade800;
+    final order = widget.order;
+    final pickupPoint = (order.pickupLat ?? 0) != 0
+        ? LatLng(order.pickupLat!, order.pickupLng!)
+        : const LatLng(10.7719, 106.7038);
+
+    // Lấy thông tin Shipper từ Firebase (ưu tiên) hoặc từ denormalized data trong đơn
+    final shipperName = _shipper?.name ?? order.shipperName ?? "Chưa phân công";
+    final shipperPhone = _shipper?.phone ?? order.shipperPhone ?? "Chưa có";
+    final licensePlate = _shipper?.licensePlate ?? order.shipperLicensePlate ?? "---";
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Theo dõi đơn: ${widget.order.id}"),
+        title: Text('Theo dõi đơn: ${order.orderId}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.center_focus_strong),
-            onPressed: _fitAllMarkers,
-            tooltip: "Thu phóng toàn cảnh",
-          ),
-        ],
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Column(
-        children: [
-          // 1. Open Street Maps View
-          Expanded(
-            flex: 5,
-            child: Stack(
+      body: _isLoadingRoute
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _routePoints[0],
-                    initialZoom: 14.0,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.example.goship',
-                    ),
-                    MarkerLayer(markers: _markers),
-                    PolylineLayer(polylines: _polylines),
-                  ],
-                ),
-                // Trạng thái GPS
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black12, blurRadius: 4),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          widget.order.status == "delivering"
-                              ? Icons.directions_bike
-                              : Icons.done_all,
-                          color: primaryColor,
-                          size: 16,
+                // Interactive Map view
+                SizedBox(
+                  height: 320,
+                  child: Stack(
+                    children: [
+                      FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _currentShipperPosition ?? pickupPoint,
+                          initialZoom: 14.5,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          widget.order.status == "delivering"
-                              ? "Shipper đang di chuyển"
-                              : "Đã giao hàng",
-                          style: TextStyle(
-                            color: Colors.grey.shade800,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.example.goship',
+                          ),
+                          PolylineLayer(polylines: _polylines),
+                          MarkerLayer(markers: _markers),
+                        ],
+                      ),
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black12)],
+                          ),
+                          child: Text(
+                            order.status.displayName,
+                            style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                      // Chỉ báo GPS thực tế
+                      if (_shipper?.currentLat != null)
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.gps_fixed, color: Colors.white, size: 12),
+                                SizedBox(width: 4),
+                                Text('GPS Thực tế', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+                // Tracking Info & Shipper card
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Status text banner
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                _trackingStatusText,
+                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 14),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (_simulationStep < _routePoints.length - 1 && _routePoints.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  "⏱️ Dự kiến giao trong: ~${_getEstimatedMinutes()} phút",
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800, fontSize: 13),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Shipper Card
+                        Card(
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: Colors.blue.shade100,
+                                  child: const Icon(Icons.person, color: Colors.blue, size: 28),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Shipper: $shipperName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '🏍️ Biển số: $licensePlate',
+                                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.phone_in_talk, color: Colors.green, size: 26),
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Đang gọi cho Shipper $shipperName: $shipperPhone')),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Launch full OSM Map Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => OSMMapScreen(
+                                    order: order,
+                                    currentPosition: _currentShipperPosition,
+                                    routePoints: _routePoints,
+                                    shipper: _shipper,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.map, color: Colors.white),
+                            label: const Text('Xem vị trí Shipper thực tế trên bản đồ', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Route details summary
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.storefront, color: Colors.orange, size: 20),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text('Từ: ${order.pickupAddress}', style: const TextStyle(fontSize: 13))),
+                                  ],
+                                ),
+                                const Divider(),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.location_on, color: Colors.green, size: 20),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text('Đến: ${order.deliveryAddress}', style: const TextStyle(fontSize: 13))),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -284,183 +454,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
               ],
             ),
-          ),
-
-          // 2. Giao diện thông tin đơn hàng & Shipper (Bottom Panel)
-          Expanded(
-            flex: 4,
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(24),
-                  topRight: Radius.circular(24),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
-                    blurRadius: 12,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Thanh trạng thái hoạt động của Shipper
-                    Text(
-                      _trackingStatusText,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    LinearProgressIndicator(
-                      value: widget.order.status == "delivered"
-                          ? 1.0
-                          : (_simulationStep + 1) / _routePoints.length,
-                      color: primaryColor,
-                      backgroundColor: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    const SizedBox(height: 18),
-                    const Divider(),
-                    const SizedBox(height: 8),
-
-                    // Thông tin Shipper giả lập cực ngầu
-                    Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 26,
-                          backgroundImage: NetworkImage(
-                            "https://cdn-icons-png.flaticon.com/512/2922/2922506.png",
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Shipper: Nguyễn Văn Minh",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.star,
-                                    color: Colors.amber.shade700,
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Text(
-                                    "4.9 | Biển số: 59-X1 999.88",
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Nút gọi điện thoại Shipper
-                        IconButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Đang gọi điện thoại cho Shipper: 0987654321",
-                                ),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.phone, color: Colors.green),
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.green.shade50,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 12),
-
-                    // Lộ trình đơn hàng
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.store,
-                          color: Colors.orange.shade700,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "Từ: ${widget.order.pickupAddress}",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          color: Colors.red,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "Đến: ${widget.order.deliveryAddress}",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Tiền thu hộ: ${currencyFormatter.format(widget.order.price)}",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          "Phí ship: ${currencyFormatter.format(widget.order.deliveryFee)}",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: primaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

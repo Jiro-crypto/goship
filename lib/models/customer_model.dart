@@ -6,6 +6,9 @@ class CustomerModel {
   final String phone;
   final String email;
   final String address;
+  final String avatar;
+  final String gender;
+  final String city;
   final DateTime createdAt;
 
   CustomerModel({
@@ -14,6 +17,9 @@ class CustomerModel {
     required this.phone,
     required this.email,
     required this.address,
+    this.avatar = '',
+    this.gender = '',
+    this.city = '',
     required this.createdAt,
   });
 
@@ -26,6 +32,9 @@ class CustomerModel {
       phone: data['phone'] ?? '',
       email: data['email'] ?? '',
       address: data['address'] ?? '',
+      avatar: data['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+      gender: data['gender'] ?? 'Nam',
+      city: data['city'] ?? 'TP. Hồ Chí Minh',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -38,6 +47,9 @@ class CustomerModel {
       phone: data['phone'] ?? '',
       email: data['email'] ?? '',
       address: data['address'] ?? '',
+      avatar: data['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+      gender: data['gender'] ?? 'Nam',
+      city: data['city'] ?? 'TP. Hồ Chí Minh',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -49,6 +61,9 @@ class CustomerModel {
       'phone': phone,
       'email': email,
       'address': address,
+      'avatar': avatar,
+      'gender': gender,
+      'city': city,
       'createdAt': FieldValue.serverTimestamp(),
     };
   }

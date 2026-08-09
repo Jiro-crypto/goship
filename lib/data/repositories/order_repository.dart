@@ -47,18 +47,32 @@ class OrderRepository {
     double? deliveryLng,
   }) async {
     try {
-      String userId = _auth.currentUser!.uid;
+      // Lấy userId: nếu chưa đăng nhập Firebase (demo mode), dùng chuỗi rỗng
+      final currentUser = _auth.currentUser;
+      String userId = currentUser?.uid ?? '';
       String newOrderId = await _generateOrderId();
 
-      // Lấy thông tin customer từ collection
-      DocumentSnapshot customerDoc = await _firestore.collection('customers').doc(userId).get();
-      Map<String, dynamic> customerData = customerDoc.data() as Map<String, dynamic>;
+      // Lấy thông tin customer từ Firestore nếu có UID hợp lệ
+      String customerName = 'Khách hàng';
+      String customerPhone = '';
+      if (userId.isNotEmpty) {
+        try {
+          DocumentSnapshot customerDoc = await _firestore.collection('customers').doc(userId).get();
+          if (customerDoc.exists) {
+            Map<String, dynamic> customerData = customerDoc.data() as Map<String, dynamic>;
+            customerName = customerData['name'] ?? 'Khách hàng';
+            customerPhone = customerData['phone'] ?? '';
+          }
+        } catch (_) {
+          // Giữ giá trị mặc định nếu không đọc được
+        }
+      }
 
       OrderModel order = OrderModel(
         orderId: newOrderId,
         customerId: userId,
-        customerName: customerData['name'] ?? '',
-        customerPhone: customerData['phone'] ?? '',
+        customerName: customerName,
+        customerPhone: customerPhone,
         receiverName: receiverName,
         receiverPhone: receiverPhone,
         pickupAddress: pickupAddress,
@@ -108,14 +122,26 @@ class OrderRepository {
     }
   }
 
+  // --- Stream đơn hàng theo ID (real-time cho detail screen) ---
+  Stream<OrderModel?> watchOrder(String orderId) {
+    return _ordersCollection.doc(orderId).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return OrderModel.fromFirestore(doc);
+    });
+  }
+
   // --- Lấy danh sách đơn của khách hàng (Stream real-time) ---
   Stream<List<OrderModel>> getOrdersByCustomer(String customerId) {
     return _ordersCollection
         .where('customerId', isEqualTo: customerId)
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+          final list = snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        }).handleError((e) {
+          print('getOrdersByCustomer error: $e');
+          return <OrderModel>[];
         });
   }
 
@@ -130,9 +156,39 @@ class OrderRepository {
       query = query.where('status', isEqualTo: status.displayName);
     }
 
-    return query.orderBy('createdAt', descending: true).snapshots().map((snapshot) {
-      return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+    // Không dùng orderBy để tránh yêu cầu Composite Index trên Firestore
+    return query.snapshots().map((snapshot) {
+      final list = snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+      // Sắp xếp phía client theo createdAt giảm dần
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    }).handleError((e) {
+      print('getOrdersByShipper error: $e');
+      return <OrderModel>[];
     });
+  }
+
+  // --- Lấy lịch sử đơn của Shipper (hoàn thành / thất bại / hủy) ---
+  Stream<List<OrderModel>> getOrdersByShipperHistory(String shipperId) {
+    // Firestore không hỗ trợ AND + whereIn với nhiều điều kiện trên cùng field
+    // Nên lấy tất cả đơn của shipper rồi filter phía client
+    return _ordersCollection
+        .where('shipperId', isEqualTo: shipperId)
+        .snapshots()
+        .map((snapshot) {
+          final list = snapshot.docs
+              .map((doc) => OrderModel.fromFirestore(doc))
+              .where((o) =>
+                  o.status == OrderStatus.delivered ||
+                  o.status == OrderStatus.deliveryFailed ||
+                  o.status == OrderStatus.cancelled)
+              .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        }).handleError((e) {
+          print('getOrdersByShipperHistory error: $e');
+          return <OrderModel>[];
+        });
   }
 
   // --- Lấy danh sách đơn theo trạng thái (cho Admin) ---
@@ -146,14 +202,37 @@ class OrderRepository {
         });
   }
 
+  // --- Lấy danh sách đơn theo nhiều trạng thái (cho Admin) ---
+  Stream<List<OrderModel>> getOrdersByStatuses(List<OrderStatus> statuses) {
+    return _ordersCollection
+        .where('status', whereIn: statuses.map((e) => e.displayName).toList())
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+        });
+  }
+
+  // --- Lấy toàn bộ đơn hàng (cho Dashboard) ---
+  Stream<List<OrderModel>> watchAllOrders() {
+    return _ordersCollection
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+        });
+  }
+
   // --- Lấy danh sách đơn Chờ phân công (cho Admin) ---
   Stream<List<OrderModel>> getPendingOrders() {
     return _ordersCollection
         .where('status', isEqualTo: OrderStatus.waitingForAssignment.displayName)
-        .orderBy('createdAt', descending: false)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+          final list = snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+          list.sort((a, b) => a.createdAt.compareTo(b.createdAt)); // cũ nhất hiện trước
+          return list;
+        }).handleError((e) {
+          print('getPendingOrders error: $e');
+          return <OrderModel>[];
         });
   }
 
@@ -162,17 +241,45 @@ class OrderRepository {
     required String orderId,
     required String shipperId,
     required String dispatcherId,
+    // Thông tin shipper truyền thẳng vào — tránh đọc lại Firestore bằng sai document ID
+    String shipperName = '',
+    String shipperPhone = '',
+    String shipperLicensePlate = '',
   }) async {
     try {
-      // Lấy thông tin shipper
-      DocumentSnapshot shipperDoc = await _firestore.collection('shippers').doc(shipperId).get();
-      Map<String, dynamic> shipperData = shipperDoc.data() as Map<String, dynamic>;
+      // Nếu chưa có thông tin shipper được truyền vào, thực hiện query theo field 'shipperId'
+      String finalName = shipperName;
+      String finalPhone = shipperPhone;
+      String finalLicensePlate = shipperLicensePlate;
+
+      if (finalName.isEmpty) {
+        // Thử đọc theo document ID (trường hợp document ID = uid)
+        DocumentSnapshot shipperDoc = await _firestore.collection('shippers').doc(shipperId).get();
+        if (shipperDoc.exists) {
+          final data = shipperDoc.data() as Map<String, dynamic>;
+          finalName = data['name'] ?? '';
+          finalPhone = data['phone'] ?? '';
+          finalLicensePlate = data['licensePlate'] ?? '';
+        } else {
+          // Fallback: query theo field 'shipperId'
+          final query = await _firestore.collection('shippers')
+              .where('shipperId', isEqualTo: shipperId)
+              .limit(1)
+              .get();
+          if (query.docs.isNotEmpty) {
+            final data = query.docs.first.data() as Map<String, dynamic>;
+            finalName = data['name'] ?? '';
+            finalPhone = data['phone'] ?? '';
+            finalLicensePlate = data['licensePlate'] ?? '';
+          }
+        }
+      }
 
       await _ordersCollection.doc(orderId).update({
         'shipperId': shipperId,
-        'shipperName': shipperData['name'] ?? '',
-        'shipperPhone': shipperData['phone'] ?? '',
-        'shipperLicensePlate': shipperData['licensePlate'] ?? '',
+        'shipperName': finalName,
+        'shipperPhone': finalPhone,
+        'shipperLicensePlate': finalLicensePlate,
         'dispatcherId': dispatcherId,
         'status': OrderStatus.waitingForAcceptance.displayName,
         'assignedAt': FieldValue.serverTimestamp(),

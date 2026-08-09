@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart'; // File này được sinh tự động khi thêm Firebase
 import 'screens/login_screen.dart';
-import 'screens/customer_home_screen.dart';
+import 'screens/customer/customer_home_screen.dart';
 import 'services/auth_service.dart';
+import 'services/preference_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

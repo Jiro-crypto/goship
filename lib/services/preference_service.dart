@@ -1,45 +1,23 @@
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/user_model.dart';
 
+/// PreferenceService - Dịch vụ quản lý SharedPreferences cục bộ.
+///
+/// SAU KHI MIGRATE SANG FIREBASE:
+///   - Quản lý đơn hàng (Orders) → OrderRepository (Firestore)
+///   - Quản lý hồ sơ người dùng → CustomerRepository / ShipperRepository (Firestore)
+///   - Quản lý xác thực → AuthRepository (Firebase Auth)
+///
+/// PreferenceService CHỈ CÒN phụ trách:
+///   - Trạng thái đăng nhập cục bộ (LoginKey)
+///   - Lịch sử thao tác (Login history log)
+///   - Bất kỳ cài đặt ứng dụng nào cần lưu offline (theme, language, etc.)
 class PreferenceService {
   //=============================
-  // KEY
+  // KEYS
   //=============================
   static const String loginKey = "isLogin";
   static bool isSessionLogin = false;
-  static const String userKey = "user";
   static const String historyKey = "history";
-
-  //=============================
-  // SAVE USER
-  //=============================
-  static Future<void> saveUser(UserModel user) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(userKey, jsonEncode(user.toJson()));
-    print("===== SAVE USER =====");
-    print("Name     : ${user.fullName}");
-    print("Email    : ${user.email}");
-    print("Password : ${user.password}");
-    print("=====================");
-  }
-
-  //=============================
-  // GET USER
-  //=============================
-  static Future<UserModel?> getUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? json = prefs.getString(userKey);
-    if (json == null) {
-      return null;
-    }
-    UserModel user = UserModel.fromJson(jsonDecode(json));
-    print("===== LOAD USER =====");
-    print("Name     : ${user.fullName}");
-    print("Email    : ${user.email}");
-    print("=====================");
-    return user;
-  }
 
   //=============================
   // LOGIN
@@ -75,24 +53,6 @@ class PreferenceService {
   }
 
   //=============================
-  // PROFILE
-  //=============================
-  static Future<Map<String, String>> getProfile() async {
-    UserModel? user = await getUser();
-    if (user == null) {
-      return {};
-    }
-    return {
-      "fullName": user.fullName,
-      "email": user.email,
-      "phone": user.phone,
-      "avatar": user.avatar,
-      "gender": user.gender,
-      "city": user.city,
-    };
-  }
-
-  //=============================
   // LOGIN HISTORY
   //=============================
   static Future<void> addHistory(String info) async {
@@ -111,25 +71,10 @@ class PreferenceService {
   }
 
   //=============================
-  // HAS USER
-  //=============================
-  static Future<bool> hasUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.containsKey(userKey);
-  }
-
-  //=============================
   // CLEAR HISTORY
   //=============================
   static Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(historyKey);
-  }
-
-  //=============================
-  // UPDATE USER
-  //=============================
-  static Future<void> updateUser(UserModel user) async {
-    await saveUser(user);
   }
 }

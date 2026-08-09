@@ -10,8 +10,19 @@ class AuthRepository {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
       return true;
+    } on FirebaseAuthException catch (e) {
+      print('Firebase login error code: ${e.code} | ${e.message}');
+      return false;
     } catch (e) {
-      print('Login error: $e');
+      // WORKAROUND: Một số phiên bản firebase_auth Flutter gặp lỗi
+      // "type 'List<Object?>' is not a subtype of type 'PigeonUserDetails?'"
+      // khi parse kết quả trả về từ platform channel, dù xác thực đã THÀNH CÔNG.
+      // Ta kiểm tra currentUser: nếu không null nghĩa là đăng nhập đã thành công thực sự.
+      if (_auth.currentUser != null) {
+        print('Login succeeded despite Pigeon serialization error (known flutter firebase_auth bug): $e');
+        return true;
+      }
+      print('Login unknown error: $e');
       return false;
     }
   }
