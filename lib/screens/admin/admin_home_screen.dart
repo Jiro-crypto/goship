@@ -10,6 +10,8 @@ import '../../services/preference_service.dart';
 import 'admin_order_detail_screen.dart';
 import 'admin_shipper_list_screen.dart';
 import 'admin_dashboard_screen.dart';
+import 'admin_shipper_tracking_screen.dart';
+
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -51,11 +53,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   // ===========================================================================
-  // CHỨC NĂNG 1: PHÂN CÔNG ĐƠN HÀNG (UC01)
+  // CHỨC NĂNG 1: PHÂN CÔNG ĐƠN HÀNG
   // ===========================================================================
   void _showAssignBottomSheet(OrderModel order) {
     List<ShipperModel> activeShippers = MockShippers.getActiveShippers();
-    // Sắp xếp shipper theo khoảng cách (gần nhất lên đầu)
     activeShippers.sort((a, b) => a.distance.compareTo(b.distance));
 
     showModalBottomSheet(
@@ -86,15 +87,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 Text(
                   "Chọn Shipper Phân Công",
                   style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: primaryColor,
+                  ),
                 ),
-                Text("Đơn: ${order.orderId}",
-                    style: TextStyle(color: Colors.grey.shade600)),
+                Text(
+                  "Đơn: ${order.orderId}",
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
                 const SizedBox(height: 8),
-
-                // Nút tự động phân công (gợi ý shipper gần nhất)
                 if (activeShippers.isNotEmpty)
                   SizedBox(
                     width: double.infinity,
@@ -105,7 +107,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       },
                       icon: const Icon(Icons.auto_awesome),
                       label: Text(
-                          "Tự động phân công (Gợi ý: ${activeShippers.first.name})"),
+                        "Tự động phân công (Gợi ý: ${activeShippers.first.name})",
+                      ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: primaryColor,
                         side: BorderSide(color: primaryColor),
@@ -114,14 +117,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   ),
                 const SizedBox(height: 8),
                 const Divider(),
-
                 if (activeShippers.isEmpty) ...[
                   Padding(
                     padding: const EdgeInsets.all(20.0),
                     child: Column(
                       children: [
-                        Icon(Icons.warning_amber_rounded,
-                            size: 60, color: Colors.red.shade400),
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 60,
+                          color: Colors.red.shade400,
+                        ),
                         const SizedBox(height: 8),
                         const Text(
                           "Hiện không có Shipper nào ở trạng thái hoạt động. Vui lòng thử lại sau.",
@@ -144,17 +149,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                             leading: CircleAvatar(
                               backgroundColor:
                                   primaryColor.withValues(alpha: 0.2),
-                              child: const Icon(Icons.motorcycle,
-                                  color: Colors.orange),
+                              child: const Icon(
+                                Icons.motorcycle,
+                                color: Colors.orange,
+                              ),
                             ),
-                            title: Text(shipper.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
+                            title: Text(
+                              shipper.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text("📞 ${shipper.phone}"),
-                                Text("📍 Cách điểm lấy: ${shipper.distance} km"),
+                                Text(
+                                    "📍 Cách điểm lấy: ${shipper.distance} km"),
                               ],
                             ),
                             trailing: ElevatedButton(
@@ -185,7 +196,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   void _confirmAssignShipper(OrderModel order, ShipperModel shipper) async {
     setState(() {
       order.maShipper = shipper.id;
-      order.trangThaiDon = "Đang giao";
       order.status = "delivering";
     });
 
@@ -195,14 +205,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-            "Phân công đơn cho ${shipper.name} (${shipper.id}) thành công."),
+          "Phân công đơn cho ${shipper.name} (${shipper.id}) thành công.",
+        ),
         backgroundColor: Colors.green.shade700,
       ),
     );
   }
 
   // ===========================================================================
-  // CHỨC NĂNG 2: HỦY ĐƠN (UC013)
+  // CHỨC NĂNG 2: HỦY ĐƠN
   // ===========================================================================
   void _showCancelDialog(OrderModel order) {
     if (order.status == "delivered") {
@@ -220,13 +231,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Xác nhận hủy đơn",
-            style: TextStyle(color: Colors.red)),
+        title: const Text(
+          "Xác nhận hủy đơn",
+          style: TextStyle(color: Colors.red),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-                "Bạn có chắc chắn muốn hủy đơn hàng này không? Vui lòng nhập lý do hủy:"),
+              "Bạn có chắc chắn muốn hủy đơn hàng này không? Vui lòng nhập lý do hủy:",
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: reasonController,
@@ -234,7 +248,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               decoration: InputDecoration(
                 hintText: "Nhập lý do hủy đơn...",
                 border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
           ],
@@ -242,8 +257,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child:
-                const Text("Không", style: TextStyle(color: Colors.grey)),
+            child: const Text("Không", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -251,15 +265,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               if (reasonController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
                   const SnackBar(
-                      content: Text("Vui lòng nhập lý do hủy đơn!")),
+                    content: Text("Vui lòng nhập lý do hủy đơn!"),
+                  ),
                 );
                 return;
               }
               Navigator.pop(ctx);
               _processCancelOrder(order, reasonController.text.trim());
             },
-            child: const Text("Xác nhận hủy",
-                style: TextStyle(color: Colors.white)),
+            child: const Text(
+              "Xác nhận hủy",
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -271,14 +288,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
-              "Đơn hàng đang được giao, hệ thống đã gửi thông báo hủy tới Shipper!"),
+            "Đơn hàng đang được giao, hệ thống đã gửi thông báo hủy tới Shipper!",
+          ),
           backgroundColor: Colors.orange.shade700,
         ),
       );
     }
 
     setState(() {
-      order.trangThaiDon = "Đã hủy";
       order.status = "cancelled";
       order.lyDoHuy = reason;
       order.nguoiHuy = "DieuPhoiVien";
@@ -330,9 +347,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   List<OrderModel> _filterOrders(String filterStatus) {
     List<OrderModel> list = MockOrders.orders;
+
     if (filterStatus != "all") {
       list = list.where((o) => o.status == filterStatus).toList();
     }
+
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.trim().toLowerCase();
       list = list.where((o) {
@@ -342,6 +361,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             o.diaChiGiao.toLowerCase().contains(q);
       }).toList();
     }
+
     return list;
   }
 
@@ -355,9 +375,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           children: [
             Icon(Icons.inbox_outlined, size: 80, color: Colors.grey.shade400),
             const SizedBox(height: 16),
-            Text("Không có đơn hàng nào",
-                style:
-                    TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+            Text(
+              "Không có đơn hàng nào",
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+            ),
           ],
         ),
       );
@@ -383,8 +404,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () async {
@@ -404,15 +424,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("Mã đơn: ${order.orderId}",
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text(
+                    "Mã đơn: ${order.orderId}",
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(order.status)
-                          .withValues(alpha: 0.15),
+                      color:
+                          _getStatusColor(order.status).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -429,8 +455,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               const SizedBox(height: 8),
               Text(
                 "🕒 ${DateFormat('dd/MM/yyyy HH:mm').format(order.thoiGianTao)}",
-                style: TextStyle(
-                    color: Colors.grey.shade600, fontSize: 12),
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
               ),
               const SizedBox(height: 12),
               const Divider(height: 1),
@@ -441,22 +466,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   const Icon(Icons.store, color: Colors.orange, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
-                      child: Text("Lấy: ${order.diaChiLay}",
-                          style: TextStyle(
-                              color: Colors.grey.shade800, fontSize: 14))),
+                    child: Text(
+                      "Lấy: ${order.diaChiLay}",
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.location_on,
-                      color: Colors.red, size: 20),
+                  const Icon(Icons.location_on, color: Colors.red, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
-                      child: Text("Giao: ${order.diaChiGiao}",
-                          style: TextStyle(
-                              color: Colors.grey.shade800, fontSize: 14))),
+                    child: Text(
+                      "Giao: ${order.diaChiGiao}",
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -464,32 +498,39 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 children: [
                   const Icon(Icons.person, size: 18, color: Colors.blueGrey),
                   const SizedBox(width: 6),
-                  Text("${order.tenNguoiNhan} - ${order.sdtNguoiNhan}",
-                      style: const TextStyle(fontSize: 13)),
+                  Text(
+                    "${order.tenNguoiNhan} - ${order.sdtNguoiNhan}",
+                    style: const TextStyle(fontSize: 13),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.attach_money,
-                      size: 18, color: Colors.green),
+                  const Icon(Icons.attach_money, size: 18, color: Colors.green),
                   const SizedBox(width: 6),
                   Text(
-                      "COD: ${currencyFormatter.format(order.tienCOD)} | Phí: ${currencyFormatter.format(order.phiShip)}",
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w500)),
+                    "COD: ${currencyFormatter.format(order.tienCOD)} | Phí: ${currencyFormatter.format(order.phiShip)}",
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
               if (order.maShipper.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.motorcycle,
-                        size: 18, color: Colors.blue),
+                    const Icon(Icons.motorcycle, size: 18, color: Colors.blue),
                     const SizedBox(width: 6),
-                    Text("Shipper: ${order.maShipper}",
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w500)),
+                    Text(
+                      "Shipper: ${order.maShipper}",
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -506,7 +547,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                           backgroundColor: primaryColor,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                         icon: const Icon(Icons.assignment_ind, size: 18),
                         label: const Text("PHÂN CÔNG"),
@@ -514,8 +556,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     ),
                     const SizedBox(width: 10),
                   ],
-                  if (order.status == "pending" ||
-                      order.status == "delivering")
+                  if (order.status == "pending" || order.status == "delivering")
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => _showCancelDialog(order),
@@ -523,14 +564,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                           foregroundColor: Colors.red,
                           side: const BorderSide(color: Colors.red),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                         icon: const Icon(Icons.cancel_outlined, size: 18),
                         label: const Text("HỦY ĐƠN"),
                       ),
                     ),
-                  if (order.status == "delivered" ||
-                      order.status == "cancelled")
+                  if (order.status == "delivered" || order.status == "cancelled")
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () async {
@@ -547,7 +588,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                           foregroundColor: primaryColor,
                           side: BorderSide(color: primaryColor),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                         icon: const Icon(Icons.visibility, size: 18),
                         label: const Text("XEM CHI TIẾT"),
@@ -586,8 +628,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
           border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none),
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
         ),
       ),
     );
@@ -633,26 +676,33 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final pages = [
       _buildOrdersPage(),
       const AdminDashboardScreen(),
+      const AdminShipperTrackingScreen(),
       const AdminShipperListScreen(),
     ];
 
     final titles = [
       "Trang Điều Phối Viên",
       "Thống kê Dashboard",
+      "Theo dõi Shipper",
       "Quản lý Shipper",
     ];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(titles[_currentIndex],
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, color: Colors.white)),
+        title: Text(
+          titles[_currentIndex],
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
         backgroundColor: primaryColor,
         elevation: 0,
         actions: [
           IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: _logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _logout,
+          ),
         ],
       ),
       body: pages[_currentIndex],
@@ -664,11 +714,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.list_alt), label: "Đơn hàng"),
+            icon: Icon(Icons.list_alt),
+            label: "Đơn hàng",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard), label: "Thống kê"),
+            icon: Icon(Icons.dashboard),
+            label: "Thống kê",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.motorcycle), label: "Shipper"),
+            icon: Icon(Icons.location_on),
+            label: "Theo dõi",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.motorcycle),
+            label: "Shipper",
+          ),
         ],
       ),
     );
