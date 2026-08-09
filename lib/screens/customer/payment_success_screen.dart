@@ -12,8 +12,9 @@ class PaymentSuccessScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
     final primaryColor = Colors.orange.shade800;
-    final totalAmount = order.phiShip > 0 ? order.phiShip : 25000.0;
-    final transactionId = order.transactionId ?? 'TXN-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+    final totalAmount = order.shippingFee > 0 ? order.shippingFee : 25000.0;
+    // Dùng mã đơn hoặc tạo mã tham chiếu thanh toán ảo vì Firebase model không có transactionId
+    final transactionId = 'TXN-${order.orderId.replaceAll(RegExp(r'[^0-9]'), '')}';
 
     return Scaffold(
       backgroundColor: Colors.white,

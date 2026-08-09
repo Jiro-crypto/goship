@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../models/user_model.dart';
-import '../../services/preference_service.dart';
+import '../../models/customer_model.dart';
+import '../../data/repositories/customer_repository.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  final UserModel user;
+  final CustomerModel user;
 
   const EditProfileScreen({super.key, required this.user});
 
@@ -23,7 +23,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.user.fullName);
+    _nameController = TextEditingController(text: widget.user.name);
     _phoneController = TextEditingController(text: widget.user.phone);
     _cityController = TextEditingController(text: widget.user.city.isNotEmpty ? widget.user.city : "TP. Hồ Chí Minh");
     _gender = widget.user.gender.isNotEmpty ? widget.user.gender : "Nam";
@@ -42,17 +42,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => _isLoading = true);
 
-    final updatedUser = UserModel(
-      fullName: _nameController.text.trim(),
-      email: widget.user.email,
-      phone: _phoneController.text.trim(),
-      password: widget.user.password,
-      avatar: widget.user.avatar,
-      gender: _gender,
-      city: _cityController.text.trim(),
-    );
-
-    await PreferenceService.updateUser(updatedUser);
+    await CustomerRepository().updateCustomer(widget.user.uid, {
+      'name': _nameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'city': _cityController.text.trim(),
+      'gender': _gender,
+      // Có thể lưu thêm address từ city hoặc bỏ qua.
+      'address': _cityController.text.trim(),
+    });
 
     if (!mounted) return;
 
@@ -116,7 +113,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: _gender,
+                value: _gender,
                 decoration: const InputDecoration(
                   labelText: 'Giới tính',
                   prefixIcon: Icon(Icons.people),

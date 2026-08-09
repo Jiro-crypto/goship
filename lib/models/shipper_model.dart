@@ -1,30 +1,63 @@
-/// ===============================
-/// Entity: SHIPPER (LAB 3)
-/// MaShipper, TenShipper, PhoneShipper, BienSoXe,
-/// TrangThaiActive, ViDoHienTai, KinhDoHienTai, CapNhatLanCuoi
-/// ===============================
-class ShipperModel {
-  final String id;         // MaShipper
-  final String name;       // TenShipper
-  final String phone;      // PhoneShipper
-  final String bienSoXe;   // BienSoXe
-  bool isActive;           // TrangThaiActive
-  final double distance;   // Khoảng cách tới điểm lấy (km) - UC01
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-  // GPS realtime (BR_collectCoordinates_01 / UC02)
-  double viDoHienTai;
-  double kinhDoHienTai;
-  DateTime capNhatLanCuoi;
+class ShipperModel {
+  final String uid;
+  final String shipperId;
+  final String name;
+  final String phone;
+  final String licensePlate;
+  final bool isActive;
+  final double? currentLat;
+  final double? currentLng;
+  final DateTime? lastUpdated;
+
+  // Dùng cho UC03: theo dõi số lần tự động từ chối trong ngày
+  final int dailyRejectionCount;   // Số lần đã từ chối hôm nay (tự động hoặc thủ công)
+  final String? rejectionCountDate; // Ngày ghi nhận, format 'yyyy-MM-dd' (vd: '2026-08-09')
 
   ShipperModel({
-    required this.id,
+    required this.uid,
+    required this.shipperId,
     required this.name,
     required this.phone,
-    this.bienSoXe = "",
+    required this.licensePlate,
     required this.isActive,
-    required this.distance,
-    this.viDoHienTai = 10.7769,
-    this.kinhDoHienTai = 106.7009,
-    DateTime? capNhatLanCuoi,
-  }) : capNhatLanCuoi = capNhatLanCuoi ?? DateTime.now();
+    this.currentLat,
+    this.currentLng,
+    this.lastUpdated,
+    this.dailyRejectionCount = 0,
+    this.rejectionCountDate,
+  });
+
+  factory ShipperModel.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    return ShipperModel(
+      uid: doc.id,
+      shipperId: data['shipperId'] ?? '',
+      name: data['name'] ?? '',
+      phone: data['phone'] ?? '',
+      licensePlate: data['licensePlate'] ?? '',
+      isActive: data['isActive'] ?? true,
+      currentLat: data['currentLat']?.toDouble(),
+      currentLng: data['currentLng']?.toDouble(),
+      lastUpdated: (data['lastUpdated'] as Timestamp?)?.toDate(),
+      dailyRejectionCount: data['dailyRejectionCount'] ?? 0,
+      rejectionCountDate: data['rejectionCountDate'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'shipperId': shipperId,
+      'name': name,
+      'phone': phone,
+      'licensePlate': licensePlate,
+      'isActive': isActive,
+      'currentLat': currentLat,
+      'currentLng': currentLng,
+      'lastUpdated': FieldValue.serverTimestamp(),
+      'dailyRejectionCount': dailyRejectionCount,
+      if (rejectionCountDate != null) 'rejectionCountDate': rejectionCountDate,
+    };
+  }
 }

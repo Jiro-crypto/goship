@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../models/order_model.dart';
 import '../../services/geocoding_service.dart';
-import '../../services/preference_service.dart';
+
 import 'payment_qr_screen.dart';
 
 class CreateOrderScreen extends StatefulWidget {
@@ -118,34 +118,30 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _lngGiao = 106.6775;
     }
 
-    final newOrderId = 'GS-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-
-    final currentUser = await PreferenceService.getUser();
-    final userMaKH = (currentUser?.email.isNotEmpty == true)
-        ? currentUser!.email.trim()
-        : (currentUser?.phone.isNotEmpty == true ? currentUser!.phone.trim() : 'KH-001');
-
-    final order = OrderModel(
-      orderId: newOrderId,
-      maKH: userMaKH,
-      senderName: currentUser?.fullName.isNotEmpty == true ? currentUser!.fullName : 'Khách hàng',
-      senderPhone: currentUser?.phone.isNotEmpty == true ? currentUser!.phone : '0987654321',
-      tenNguoiNhan: _nguoiNhanController.text.trim(),
-      sdtNguoiNhan: _sdtNguoiNhanController.text.trim(),
-      diaChiLay: _diaChiLayController.text.trim(),
-      latLay: _latLay,
-      lngLay: _lngLay,
-      diaChiGiao: _diaChiGiaoController.text.trim(),
-      latGiao: _latGiao,
-      lngGiao: _lngGiao,
-      khoiLuong: double.tryParse(_khoiLuongController.text) ?? 1.0,
-      ghiChu: _ghiChuController.text.trim(),
-      tienCOD: double.tryParse(_tienCODController.text.trim()) ?? 0.0,
-      phiShip: _phiShip > 0 ? _phiShip : 25000.0,
-      trangThaiDon: 'Chờ giao',
-      thoiGianTao: DateTime.now(),
-      danhMucHang: _danhMucController.text.trim().isNotEmpty ? _danhMucController.text.trim() : 'Hàng hóa chung',
-      soLuong: int.tryParse(_soLuongController.text) ?? 1,
+    // Tạo đơn hàng tạm để truyền dữ liệu sang PaymentQRScreen
+    // OrderRepository sẽ chịu trách nhiệm tạo mã đơn thực tế và lưu lên Firebase sau khi thanh toán xong
+    final tempOrder = OrderModel(
+      orderId: 'TẠM TÍNH',
+      customerId: '',
+      customerName: '',
+      customerPhone: '',
+      receiverName: _nguoiNhanController.text.trim(),
+      receiverPhone: _sdtNguoiNhanController.text.trim(),
+      pickupAddress: _diaChiLayController.text.trim(),
+      pickupLat: _latLay,
+      pickupLng: _lngLay,
+      deliveryAddress: _diaChiGiaoController.text.trim(),
+      deliveryLat: _latGiao,
+      deliveryLng: _lngGiao,
+      weight: double.tryParse(_khoiLuongController.text) ?? 1.0,
+      category: _danhMucController.text.trim().isNotEmpty ? _danhMucController.text.trim() : 'Hàng hóa chung',
+      size: '',
+      quantity: int.tryParse(_soLuongController.text) ?? 1,
+      codAmount: double.tryParse(_tienCODController.text.trim()) ?? 0.0,
+      shippingFee: _phiShip > 0 ? _phiShip : 25000.0,
+      note: _ghiChuController.text.trim(),
+      status: OrderStatus.waitingForAssignment,
+      createdAt: DateTime.now(),
     );
 
     // Chuyển sang màn hình Thanh toán Chuyển khoản QR với đếm ngược 15 giây
@@ -156,7 +152,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => PaymentQRScreen(order: order),
+        builder: (_) => PaymentQRScreen(order: tempOrder),
       ),
     );
   }

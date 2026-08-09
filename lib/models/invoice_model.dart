@@ -1,67 +1,68 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class InvoiceModel {
-  final String maHD;
-  final String orderId;
-  final String? urlAnhMinhChung;
-  final DateTime? thoiGianXacNhan;
-  String trangThaiTT; // 'Chưa thanh toán' hoặc 'Đã thanh toán'
-  String? phuongThucTT; // 'Tiền mặt', 'MoMo', 'VNPay'
-  final double? latChup;
-  final double? lngChup;
-  final String? ghiChuShipper;
-  final double? latXacNhan;
-  final double? lngXacNhan;
-  String? maGiaoDich;
-  DateTime? thoiDiemThanhToan;
+  final String? invoiceId;
+  final String? imageUrl;
+  final DateTime? confirmedAt;
+  final String paymentStatus; // 'Chưa thanh toán' | 'Đã thanh toán'
+  final String? paymentMethod;
+  final double? photoLat;
+  final double? photoLng;
+  final String? shipperNote;
+  final double? confirmLat;
+  final double? confirmLng;
+  final String? transactionId;
+  final DateTime? paymentTime;
 
   InvoiceModel({
-    required this.maHD,
-    required this.orderId,
-    this.urlAnhMinhChung,
-    this.thoiGianXacNhan,
-    this.trangThaiTT = 'Chưa thanh toán',
-    this.phuongThucTT,
-    this.latChup,
-    this.lngChup,
-    this.ghiChuShipper,
-    this.latXacNhan,
-    this.lngXacNhan,
-    this.maGiaoDich,
-    this.thoiDiemThanhToan,
+    this.invoiceId,
+    this.imageUrl,
+    this.confirmedAt,
+    required this.paymentStatus,
+    this.paymentMethod,
+    this.photoLat,
+    this.photoLng,
+    this.shipperNote,
+    this.confirmLat,
+    this.confirmLng,
+    this.transactionId,
+    this.paymentTime,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'maHD': maHD,
-      'orderId': orderId,
-      'urlAnhMinhChung': urlAnhMinhChung,
-      'thoiGianXacNhan': thoiGianXacNhan?.toIso8601String(),
-      'trangThaiTT': trangThaiTT,
-      'phuongThucTT': phuongThucTT,
-      'latChup': latChup,
-      'lngChup': lngChup,
-      'ghiChuShipper': ghiChuShipper,
-      'latXacNhan': latXacNhan,
-      'lngXacNhan': lngXacNhan,
-      'maGiaoDich': maGiaoDich,
-      'thoiDiemThanhToan': thoiDiemThanhToan?.toIso8601String(),
-    };
+  factory InvoiceModel.fromMap(Map<String, dynamic>? data) {
+    if (data == null) {
+      return InvoiceModel(paymentStatus: 'Chưa thanh toán');
+    }
+    return InvoiceModel(
+      invoiceId: data['invoiceId'],
+      imageUrl: data['imageUrl'],
+      confirmedAt: (data['confirmedAt'] as Timestamp?)?.toDate(),
+      paymentStatus: data['paymentStatus'] ?? 'Chưa thanh toán',
+      paymentMethod: data['paymentMethod'],
+      photoLat: data['photoLat']?.toDouble(),
+      photoLng: data['photoLng']?.toDouble(),
+      shipperNote: data['shipperNote'],
+      confirmLat: data['confirmLat']?.toDouble(),
+      confirmLng: data['confirmLng']?.toDouble(),
+      transactionId: data['transactionId'],
+      paymentTime: (data['paymentTime'] as Timestamp?)?.toDate(),
+    );
   }
 
-  factory InvoiceModel.fromJson(Map<String, dynamic> json) {
-    return InvoiceModel(
-      maHD: json['maHD'] ?? '',
-      orderId: json['orderId'] ?? '',
-      urlAnhMinhChung: json['urlAnhMinhChung'],
-      thoiGianXacNhan: json['thoiGianXacNhan'] != null ? DateTime.parse(json['thoiGianXacNhan']) : null,
-      trangThaiTT: json['trangThaiTT'] ?? 'Chưa thanh toán',
-      phuongThucTT: json['phuongThucTT'],
-      latChup: (json['latChup'] as num?)?.toDouble(),
-      lngChup: (json['lngChup'] as num?)?.toDouble(),
-      ghiChuShipper: json['ghiChuShipper'],
-      latXacNhan: (json['latXacNhan'] as num?)?.toDouble(),
-      lngXacNhan: (json['lngXacNhan'] as num?)?.toDouble(),
-      maGiaoDich: json['maGiaoDich'],
-      thoiDiemThanhToan: json['thoiDiemThanhToan'] != null ? DateTime.parse(json['thoiDiemThanhToan']) : null,
-    );
+  Map<String, dynamic> toMap() {
+    return {
+      if (invoiceId != null) 'invoiceId': invoiceId,
+      if (imageUrl != null) 'imageUrl': imageUrl,
+      if (confirmedAt != null) 'confirmedAt': confirmedAt,
+      'paymentStatus': paymentStatus,
+      if (paymentMethod != null) 'paymentMethod': paymentMethod,
+      if (photoLat != null) 'photoLat': photoLat,
+      if (photoLng != null) 'photoLng': photoLng,
+      if (shipperNote != null) 'shipperNote': shipperNote,
+      if (confirmLat != null) 'confirmLat': confirmLat,
+      if (confirmLng != null) 'confirmLng': confirmLng,
+      if (transactionId != null) 'transactionId': transactionId,
+      if (paymentTime != null) 'paymentTime': paymentTime,
+    };
   }
 }

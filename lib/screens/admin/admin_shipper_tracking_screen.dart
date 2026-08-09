@@ -1,15 +1,13 @@
 import 'dart:async';
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-
-import '../../data/mock_orders.dart';
-import '../../data/mock_shippers.dart';
 import '../../models/order_model.dart';
 import '../../models/shipper_model.dart';
 import '../../services/route_service.dart';
+import '../../data/repositories/shipper_repository.dart';
+import '../../data/repositories/order_repository.dart';
 
 class AdminShipperTrackingScreen extends StatefulWidget {
   const AdminShipperTrackingScreen({super.key});
@@ -26,13 +24,21 @@ class _AdminShipperTrackingScreenState
 
   final LatLng _defaultCenter = const LatLng(10.7769, 106.7009);
 
-  // Vị trí hiện tại của shipper
+  // Dữ liệu thực từ Firebase (cập nhật qua Stream)
+  List<ShipperModel> _activeShippers = [];
+  List<OrderModel> _activeOrders = [];
+
+  // Subscriptions
+  StreamSubscription<List<ShipperModel>>? _shipperSub;
+  StreamSubscription<List<OrderModel>>? _orderSub;
+
+  // Vị trí hiện tại của shipper (lấy từ currentLat/currentLng trong Firestore)
   final Map<String, LatLng> _shipperPositions = {};
 
-  // Lộ trình đầy đủ theo đường thật cho từng shipper (SP-XXX -> danh sách điểm)
+  // Lộ trình đầy đủ theo đường thật cho từng shipper (uid -> danh sách điểm)
   final Map<String, List<LatLng>> _shipperRoutes = {};
 
-  // Vị trí thứ mấy trong route (index)
+  // Vị trí thứ mấy trong route (index) - dùng cho animation mô phỏng
   final Map<String, int> _shipperRouteIndex = {};
 
   // Trạng thái tải route
@@ -46,65 +52,94 @@ class _AdminShipperTrackingScreenState
   @override
   void initState() {
     super.initState();
-    _initAndLoadRoutes();
+    _subscribeToFirebase();
   }
 
   @override
   void dispose() {
     _locationTimer?.cancel();
+    _shipperSub?.cancel();
+    _orderSub?.cancel();
     super.dispose();
   }
 
-  // Khởi tạo vị trí + load route thật từ OSRM cho các shipper đang giao
-  Future<void> _initAndLoadRoutes() async {
-    final random = Random();
+  // Lắng nghe Stream từ Firebase
+  void _subscribeToFirebase() {
+    // Stream Shipper đang hoạt động
+    _shipperSub = ShipperRepository().watchActiveShippers().listen((shippers) {
+      if (!mounted) return;
+      setState(() {
+        _activeShippers = shippers;
+      });
+      // Khi dữ liệu Shipper về, cập nhật vị trí từ Firestore
+      _syncShipperPositions(shippers);
+    });
 
-    for (final s in MockShippers.shippers) {
+    // Stream Đơn hàng đang trong các trạng thái giao
+    _orderSub = OrderRepository().getOrdersByStatuses([
+      OrderStatus.waitingForAcceptance,
+      OrderStatus.waitingForPickup,
+      OrderStatus.delivering,
+    ]).listen((orders) {
+      if (!mounted) return;
+      setState(() {
+        _activeOrders = orders;
+      });
+    });
+  }
+
+  // Cập nhật vị trí Shipper từ trường currentLat/currentLng của Firestore
+  void _syncShipperPositions(List<ShipperModel> shippers) {
+    final random = Random();
+    for (final s in shippers) {
       if (!s.isActive) continue;
 
-      // Lấy đơn đang giao (nếu có)
-      final order = _getCurrentOrder(s.id);
+      if (s.currentLat != null && s.currentLng != null) {
+        // Shipper đã có vị trí GPS thực từ Firestore
+        final newPos = LatLng(s.currentLat!, s.currentLng!);
+        final oldPos = _shipperPositions[s.uid];
+        _shipperPositions[s.uid] = newPos;
 
-      if (order != null) {
-        // Shipper có đơn: đặt vị trí gần điểm lấy hàng và load route thật
-        final startLat = order.latLay + (random.nextDouble() - 0.5) * 0.008;
-        final startLng = order.lngLay + (random.nextDouble() - 0.5) * 0.008;
-        _shipperPositions[s.id] = LatLng(startLat, startLng);
-        _routeLoading[s.id] = true;
-      } else {
-        // Shipper rảnh: đặt vị trí random quanh trung tâm HCM
+        // Nếu vị trí thay đổi và Shipper có đơn đang giao → load lại route
+        if (oldPos == null || _distanceKm(oldPos, newPos) > 0.05) {
+          final order = _getCurrentOrder(s.uid);
+          if (order != null && !(_routeLoading[s.uid] == true)) {
+            _routeLoading[s.uid] = true;
+            _loadRouteForShipper(s.uid, order);
+          }
+        }
+      } else if (!_shipperPositions.containsKey(s.uid)) {
+        // Chưa có vị trí GPS: đặt ngẫu nhiên quanh trung tâm HCM làm fallback
         final latOffset = (random.nextDouble() - 0.5) * 0.05;
         final lngOffset = (random.nextDouble() - 0.5) * 0.05;
-        _shipperPositions[s.id] = LatLng(
+        _shipperPositions[s.uid] = LatLng(
           _defaultCenter.latitude + latOffset,
           _defaultCenter.longitude + lngOffset,
         );
       }
     }
 
-    setState(() {
-      _isInitializing = false;
-    });
-
-    // Load route thật cho từng shipper có đơn (parallel)
-    for (final s in MockShippers.shippers) {
-      if (s.isActive) {
-        final order = _getCurrentOrder(s.id);
-        if (order != null) {
-          _loadRouteForShipper(s.id, order);
-        }
-      }
+    if (_isInitializing && _activeShippers.isNotEmpty) {
+      setState(() => _isInitializing = false);
+      _startLocationSimulation();
+    } else if (_isInitializing && _activeShippers.isEmpty) {
+      // Không có shipper nào nhưng dữ liệu đã load xong
+      setState(() => _isInitializing = false);
     }
-
-    _startLocationSimulation();
   }
 
   // Gọi OSRM API lấy tuyến đường: shipper -> điểm lấy -> điểm giao
-  Future<void> _loadRouteForShipper(String shipperId, OrderModel order) async {
+  Future<void> _loadRouteForShipper(String shipperUid, OrderModel order) async {
     try {
-      final shipperPos = _shipperPositions[shipperId]!;
-      final pickup = LatLng(order.latLay, order.lngLay);
-      final delivery = LatLng(order.latGiao, order.lngGiao);
+      final shipperPos = _shipperPositions[shipperUid]!;
+      final pickup = LatLng(
+        order.pickupLat ?? _defaultCenter.latitude,
+        order.pickupLng ?? _defaultCenter.longitude,
+      );
+      final delivery = LatLng(
+        order.deliveryLat ?? _defaultCenter.latitude,
+        order.deliveryLng ?? _defaultCenter.longitude,
+      );
 
       // Đoạn 1: shipper -> điểm lấy
       final leg1 = await RouteService.getRoutePoints(shipperPos, pickup);
@@ -120,35 +155,35 @@ class _AdminShipperTrackingScreenState
 
       if (!mounted) return;
       setState(() {
-        _shipperRoutes[shipperId] = fullRoute;
-        _shipperRouteIndex[shipperId] = 0;
-        _routeLoading[shipperId] = false;
+        _shipperRoutes[shipperUid] = fullRoute;
+        _shipperRouteIndex[shipperUid] = 0;
+        _routeLoading[shipperUid] = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _routeLoading[shipperId] = false;
+        _routeLoading[shipperUid] = false;
       });
     }
   }
 
-  // Timer di chuyển shipper theo route (2 giây tiến 1 điểm)
+  // Timer di chuyển shipper theo route (2 giây tiến 1 điểm) - animation mô phỏng
   void _startLocationSimulation() {
     _locationTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
 
       setState(() {
-        for (final s in MockShippers.shippers) {
+        for (final s in _activeShippers) {
           if (!s.isActive) continue;
 
-          final route = _shipperRoutes[s.id];
+          final route = _shipperRoutes[s.uid];
           if (route == null || route.isEmpty) continue;
 
-          final idx = _shipperRouteIndex[s.id] ?? 0;
+          final idx = _shipperRouteIndex[s.uid] ?? 0;
           if (idx < route.length - 1) {
             final nextIdx = idx + 1;
-            _shipperRouteIndex[s.id] = nextIdx;
-            _shipperPositions[s.id] = route[nextIdx];
+            _shipperRouteIndex[s.uid] = nextIdx;
+            _shipperPositions[s.uid] = route[nextIdx];
           }
           // Khi tới cuối route thì dừng (đã đến nơi)
         }
@@ -170,9 +205,9 @@ class _AdminShipperTrackingScreenState
   }
 
   // Tính tổng độ dài route còn lại từ vị trí hiện tại
-  double _remainingRouteKm(String shipperId) {
-    final route = _shipperRoutes[shipperId];
-    final idx = _shipperRouteIndex[shipperId] ?? 0;
+  double _remainingRouteKm(String shipperUid) {
+    final route = _shipperRoutes[shipperUid];
+    final idx = _shipperRouteIndex[shipperUid] ?? 0;
     if (route == null || route.length < 2 || idx >= route.length - 1) return 0;
 
     double total = 0;
@@ -182,24 +217,41 @@ class _AdminShipperTrackingScreenState
     return total;
   }
 
-  OrderModel? _getCurrentOrder(String shipperId) {
+  // Tìm đơn hàng đang được giao bởi Shipper (ưu tiên trạng thái 'Đang giao')
+  OrderModel? _getCurrentOrder(String shipperUid) {
+    // Tìm uid shipper → lấy shipperId của họ để so sánh với trường shipperId trong order
+    final shipper = _activeShippers.where((s) => s.uid == shipperUid).firstOrNull;
+    if (shipper == null) return null;
+
+    // Ưu tiên đơn trạng thái 'Đang giao', fallback sang 'Chờ giao'
     try {
-      return MockOrders.orders.firstWhere(
-        (o) => o.maShipper == shipperId && o.status == "delivering",
+      return _activeOrders.firstWhere(
+        (o) => o.shipperId == shipper.shipperId && o.status == OrderStatus.delivering,
+      );
+    } catch (_) {}
+
+    try {
+      return _activeOrders.firstWhere(
+        (o) => o.shipperId == shipper.shipperId && o.status == OrderStatus.waitingForPickup,
       );
     } catch (_) {
       return null;
     }
   }
 
-  int _deliveringCount(String shipperId) {
-    return MockOrders.orders
-        .where((o) => o.maShipper == shipperId && o.status == "delivering")
+  int _deliveringCount(String shipperUid) {
+    final shipper = _activeShippers.where((s) => s.uid == shipperUid).firstOrNull;
+    if (shipper == null) return 0;
+    return _activeOrders
+        .where((o) =>
+            o.shipperId == shipper.shipperId &&
+            (o.status == OrderStatus.delivering ||
+                o.status == OrderStatus.waitingForPickup))
         .length;
   }
 
   void _focusShipper(ShipperModel shipper) {
-    final pos = _shipperPositions[shipper.id];
+    final pos = _shipperPositions[shipper.uid];
     if (pos == null) return;
 
     setState(() {
@@ -278,11 +330,11 @@ class _AdminShipperTrackingScreenState
     final markers = <Marker>[];
 
     final targets = _showAllShippers
-        ? MockShippers.shippers.where((s) => s.isActive).toList()
+        ? _activeShippers.where((s) => s.isActive).toList()
         : (_selectedShipper != null ? [_selectedShipper!] : <ShipperModel>[]);
 
     for (final shipper in targets) {
-      final pos = _shipperPositions[shipper.id];
+      final pos = _shipperPositions[shipper.uid];
       if (pos == null) continue;
 
       markers.add(
@@ -292,7 +344,7 @@ class _AdminShipperTrackingScreenState
           height: 70,
           child: _buildShipperMarker(
             shipper,
-            _selectedShipper?.id == shipper.id,
+            _selectedShipper?.uid == shipper.uid,
           ),
         ),
       );
@@ -300,49 +352,53 @@ class _AdminShipperTrackingScreenState
 
     // Marker điểm lấy/giao của shipper đang chọn
     if (_selectedShipper != null) {
-      final order = _getCurrentOrder(_selectedShipper!.id);
+      final order = _getCurrentOrder(_selectedShipper!.uid);
       if (order != null) {
-        markers.add(
-          Marker(
-            point: LatLng(order.latLay, order.lngLay),
-            width: 50,
-            height: 50,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade700,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: const Icon(
-                Icons.store,
-                color: Colors.white,
-                size: 18,
+        if (order.pickupLat != null && order.pickupLng != null) {
+          markers.add(
+            Marker(
+              point: LatLng(order.pickupLat!, order.pickupLng!),
+              width: 50,
+              height: 50,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade700,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: const Icon(
+                  Icons.store,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
             ),
-          ),
-        );
+          );
+        }
 
-        markers.add(
-          Marker(
-            point: LatLng(order.latGiao, order.lngGiao),
-            width: 50,
-            height: 50,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.red.shade700,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: const Icon(
-                Icons.location_on,
-                color: Colors.white,
-                size: 18,
+        if (order.deliveryLat != null && order.deliveryLng != null) {
+          markers.add(
+            Marker(
+              point: LatLng(order.deliveryLat!, order.deliveryLng!),
+              width: 50,
+              height: 50,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade700,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: const Icon(
+                  Icons.location_on,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
             ),
-          ),
-        );
+          );
+        }
       }
     }
 
@@ -355,8 +411,8 @@ class _AdminShipperTrackingScreenState
 
     if (_selectedShipper != null) {
       // Chế độ 1 shipper: vẽ chi tiết đã đi + chưa đi
-      final route = _shipperRoutes[_selectedShipper!.id];
-      final idx = _shipperRouteIndex[_selectedShipper!.id] ?? 0;
+      final route = _shipperRoutes[_selectedShipper!.uid];
+      final idx = _shipperRouteIndex[_selectedShipper!.uid] ?? 0;
 
       if (route != null && route.length >= 2) {
         // Phần đã đi qua (nét liền, xám nhạt)
@@ -383,10 +439,10 @@ class _AdminShipperTrackingScreenState
       }
     } else if (_showAllShippers) {
       // Chế độ tất cả: vẽ route mờ cho từng shipper
-      for (final s in MockShippers.shippers) {
+      for (final s in _activeShippers) {
         if (!s.isActive) continue;
-        final route = _shipperRoutes[s.id];
-        final idx = _shipperRouteIndex[s.id] ?? 0;
+        final route = _shipperRoutes[s.uid];
+        final idx = _shipperRouteIndex[s.uid] ?? 0;
         if (route != null && route.length >= 2 && idx < route.length - 1) {
           polylines.add(
             Polyline(
@@ -403,8 +459,7 @@ class _AdminShipperTrackingScreenState
   }
 
   Widget _buildShipperListPanel() {
-    final activeShippers =
-        MockShippers.shippers.where((s) => s.isActive).toList();
+    final activeShippers = _activeShippers.where((s) => s.isActive).toList();
 
     return Container(
       height: 130,
@@ -456,9 +511,9 @@ class _AdminShipperTrackingScreenState
               itemCount: activeShippers.length,
               itemBuilder: (context, index) {
                 final shipper = activeShippers[index];
-                final isSelected = _selectedShipper?.id == shipper.id;
-                final delivering = _deliveringCount(shipper.id);
-                final loading = _routeLoading[shipper.id] == true;
+                final isSelected = _selectedShipper?.uid == shipper.uid;
+                final delivering = _deliveringCount(shipper.uid);
+                final loading = _routeLoading[shipper.uid] == true;
 
                 return GestureDetector(
                   onTap: () => _focusShipper(shipper),
@@ -559,20 +614,24 @@ class _AdminShipperTrackingScreenState
     if (_selectedShipper == null) return const SizedBox.shrink();
 
     final shipper = _selectedShipper!;
-    final order = _getCurrentOrder(shipper.id);
-    final shipperPos = _shipperPositions[shipper.id];
-    final loading = _routeLoading[shipper.id] == true;
+    final order = _getCurrentOrder(shipper.uid);
+    final shipperPos = _shipperPositions[shipper.uid];
+    final loading = _routeLoading[shipper.uid] == true;
 
     double? distanceToPickup;
     double? distanceToDelivery;
     double? remainingKm;
 
     if (order != null && shipperPos != null) {
-      distanceToPickup =
-          _distanceKm(shipperPos, LatLng(order.latLay, order.lngLay));
-      distanceToDelivery =
-          _distanceKm(shipperPos, LatLng(order.latGiao, order.lngGiao));
-      remainingKm = _remainingRouteKm(shipper.id);
+      if (order.pickupLat != null && order.pickupLng != null) {
+        distanceToPickup =
+            _distanceKm(shipperPos, LatLng(order.pickupLat!, order.pickupLng!));
+      }
+      if (order.deliveryLat != null && order.deliveryLng != null) {
+        distanceToDelivery =
+            _distanceKm(shipperPos, LatLng(order.deliveryLat!, order.deliveryLng!));
+      }
+      remainingKm = _remainingRouteKm(shipper.uid);
     }
 
     return Positioned(
@@ -607,7 +666,7 @@ class _AdminShipperTrackingScreenState
                           ),
                         ),
                         Text(
-                          "${shipper.id} • ${shipper.phone}",
+                          "${shipper.shipperId} • ${shipper.phone}",
                           style: TextStyle(
                             color: Colors.grey.shade700,
                             fontSize: 12,
@@ -754,7 +813,7 @@ class _AdminShipperTrackingScreenState
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        final pos = _shipperPositions[shipper.id];
+                        final pos = _shipperPositions[shipper.uid];
                         if (pos != null) {
                           _mapController.move(pos, 16);
                         }

@@ -12,6 +12,7 @@ class InvoiceScreen extends StatelessWidget {
     final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
     final primaryColor = Colors.orange.shade800;
     final invoiceId = 'HD-${order.orderId}';
+    final transactionId = order.invoice?.transactionId;
 
     return Scaffold(
       appBar: AppBar(
@@ -66,20 +67,20 @@ class InvoiceScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Phương thức thanh toán:'),
-                        const Text('Chuyển khoản Ngân hàng', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Phương thức thanh toán:'),
+                        Text('Chuyển khoản Ngân hàng', style: TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    if (order.transactionId != null && order.transactionId!.isNotEmpty) ...[
+                    if (transactionId != null && transactionId.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Mã giao dịch:'),
-                          Text(order.transactionId!, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
+                          Text(transactionId, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
                         ],
                       ),
                     ],
@@ -87,17 +88,17 @@ class InvoiceScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Phí vận chuyển (Quãng đường + Khối lượng):'),
-                        Text(currencyFormatter.format(order.phiShip)),
+                        const Text('Phí vận chuyển:'),
+                        Text(currencyFormatter.format(order.shippingFee)),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Tiền thu hộ COD (Shipper thu khi giao):'),
+                        const Text('Tiền thu hộ COD:'),
                         Text(
-                          currencyFormatter.format(order.tienCOD),
+                          currencyFormatter.format(order.codAmount),
                           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800),
                         ),
                       ],
@@ -106,9 +107,9 @@ class InvoiceScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('TỔNG GIÁ TRỊ ĐƠN HÀNG:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        const Text('TỔNG GIÁ TRỊ:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                         Text(
-                          currencyFormatter.format(order.phiShip + order.tienCOD),
+                          currencyFormatter.format(order.shippingFee + order.codAmount),
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor),
                         ),
                       ],

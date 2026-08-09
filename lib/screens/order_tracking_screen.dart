@@ -5,9 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/order_model.dart';
 import '../models/shipper_model.dart';
-import '../data/mock_shippers.dart';
+import '../data/repositories/shipper_repository.dart';
+import '../data/repositories/order_repository.dart';
 import '../services/route_service.dart';
-import '../services/preference_service.dart';
 import 'OSMMap_screen.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
@@ -31,21 +31,44 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
   List<LatLng> _routePoints = [];
 
+  // Dữ liệu shipper từ Firebase (realtime)
+  ShipperModel? _shipper;
+  StreamSubscription<ShipperModel?>? _shipperSub;
+
   @override
   void initState() {
     super.initState();
     _initRouteAndMap();
+    _listenToShipperLocation();
+  }
+
+  /// Lắng nghe vị trí Shipper từ Firebase realtime
+  void _listenToShipperLocation() {
+    final shipperId = widget.order.shipperId;
+    if (shipperId == null || shipperId.isEmpty) return;
+
+    _shipperSub = ShipperRepository().watchShipperLocation(shipperId).listen((shipperData) {
+      if (!mounted) return;
+      setState(() {
+        _shipper = shipperData;
+        // Nếu Shipper có GPS thực tế từ Firebase, ưu tiên dùng
+        if (shipperData?.currentLat != null && shipperData?.currentLng != null) {
+          _currentShipperPosition = LatLng(shipperData!.currentLat!, shipperData.currentLng!);
+          _updateShipperMarker();
+        }
+      });
+    });
   }
 
   Future<void> _initRouteAndMap() async {
-    final pickupPoint = widget.order.latLay != 0
-        ? LatLng(widget.order.latLay, widget.order.lngLay)
+    final pickupPoint = (widget.order.pickupLat ?? 0) != 0
+        ? LatLng(widget.order.pickupLat!, widget.order.pickupLng!)
         : const LatLng(10.7719, 106.7038);
-    final deliveryPoint = widget.order.latGiao != 0
-        ? LatLng(widget.order.latGiao, widget.order.lngGiao)
+    final deliveryPoint = (widget.order.deliveryLat ?? 0) != 0
+        ? LatLng(widget.order.deliveryLat!, widget.order.deliveryLng!)
         : const LatLng(10.7905, 106.6775);
 
-    // Dùng RouteService dùng chung lấy tuyến đường thực tế từ OSRM
+    // Lấy tuyến đường thực tế từ OSRM
     final RouteInfo routeInfo = await RouteService.getRouteInfo(pickupPoint, deliveryPoint);
     _routePoints = routeInfo.points;
 
@@ -54,25 +77,30 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     if (!routeInfo.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Không thể kết nối máy chủ OSRM, đang hiển thị đường chim bay."), 
+          content: Text("Không thể kết nối máy chủ OSRM, đang hiển thị đường chim bay."),
           backgroundColor: Colors.orange,
         ),
       );
     }
 
-    // Resume simulation step based on real elapsed time since assignment
+    // Resume simulation dựa trên thời gian đã trôi qua từ lúc phân công
     if (_routePoints.isNotEmpty) {
       final int totalSteps = _routePoints.length;
-      final DateTime startTime = widget.order.thoiGianPhanCong ?? widget.order.thoiGianTao;
+      final DateTime startTime = widget.order.assignedAt ?? widget.order.createdAt;
       final int elapsedSec = DateTime.now().difference(startTime).inSeconds;
       final int calculatedStep = (elapsedSec / 1.5).floor();
 
       if (calculatedStep >= totalSteps - 1) {
         _simulationStep = totalSteps - 1;
-        widget.order.trangThaiDon = "Đã giao";
-        widget.order.status = "delivered";
-        PreferenceService.saveOrder(widget.order);
         _trackingStatusText = "Shipper đã đến nơi! Vui lòng nhận hàng.";
+        // Cập nhật trạng thái lên Firebase nếu chưa được cập nhật
+        if (widget.order.status != OrderStatus.delivered) {
+          OrderRepository().confirmDeliverySuccess(
+            orderId: widget.order.orderId,
+            confirmLat: deliveryPoint.latitude,
+            confirmLng: deliveryPoint.longitude,
+          );
+        }
       } else {
         _simulationStep = calculatedStep < 0 ? 0 : calculatedStep;
       }
@@ -81,9 +109,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     setState(() {
       _isLoadingRoute = false;
       if (_routePoints.isNotEmpty) {
-        _currentShipperPosition = _routePoints[_simulationStep];
+        // Chỉ dùng simulation nếu chưa có GPS thực từ Firebase
+        if (_currentShipperPosition == null) {
+          _currentShipperPosition = _routePoints[_simulationStep];
+        }
       } else {
-        _currentShipperPosition = pickupPoint;
+        _currentShipperPosition ??= pickupPoint;
       }
       _initStaticMarkersAndPolylines(pickupPoint, deliveryPoint);
     });
@@ -96,6 +127,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   @override
   void dispose() {
     _simulationTimer?.cancel();
+    _shipperSub?.cancel();
     super.dispose();
   }
 
@@ -148,16 +180,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       setState(() {
         if (_simulationStep < _routePoints.length - 1) {
           _simulationStep++;
-          _currentShipperPosition = _routePoints[_simulationStep];
+          // Chỉ update simulation nếu chưa có GPS thực từ Firebase
+          if (_shipper?.currentLat == null) {
+            _currentShipperPosition = _routePoints[_simulationStep];
+          }
 
           if (_simulationStep > 0 && _simulationStep < _routePoints.length - 1) {
             _trackingStatusText = "Shipper đã nhận hàng và đang trên đường giao tới bạn...";
           } else if (_simulationStep == _routePoints.length - 1) {
             _trackingStatusText = "Shipper đã đến nơi! Vui lòng nhận hàng.";
-            widget.order.trangThaiDon = "Đã giao";
-            widget.order.status = "delivered";
             _simulationTimer?.cancel();
-            PreferenceService.saveOrder(widget.order);
           }
 
           _updateShipperMarker();
@@ -195,23 +227,26 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     _mapController.move(_currentShipperPosition!, 14.5);
   }
 
+  int _getEstimatedMinutes() {
+    if (_routePoints.isEmpty) return 0;
+    final remaining = _routePoints.length - _simulationStep;
+    // 1.5s mỗi bước (simulation), scale sang phút thực tế
+    final estimatedSeconds = remaining * 1.5;
+    return (estimatedSeconds / 60).ceil().clamp(1, 60);
+  }
+
   @override
   Widget build(BuildContext context) {
     final primaryColor = Colors.orange.shade800;
     final order = widget.order;
-    final pickupPoint = order.latLay != 0 ? LatLng(order.latLay, order.lngLay) : const LatLng(10.7719, 106.7038);
+    final pickupPoint = (order.pickupLat ?? 0) != 0
+        ? LatLng(order.pickupLat!, order.pickupLng!)
+        : const LatLng(10.7719, 106.7038);
 
-    // Lookup actual assigned Shipper info
-    String shipperName = "Nguyễn Văn An";
-    String shipperPhone = "0901234567";
-    if (order.maShipper.isNotEmpty) {
-      final found = MockShippers.shippers.firstWhere(
-        (s) => s.id == order.maShipper || s.name == order.maShipper,
-        orElse: () => ShipperModel(id: order.maShipper, name: order.maShipper, phone: "0901234567", isActive: true, distance: 1.0),
-      );
-      shipperName = found.name;
-      shipperPhone = found.phone;
-    }
+    // Lấy thông tin Shipper từ Firebase (ưu tiên) hoặc từ denormalized data trong đơn
+    final shipperName = _shipper?.name ?? order.shipperName ?? "Chưa phân công";
+    final shipperPhone = _shipper?.phone ?? order.shipperPhone ?? "Chưa có";
+    final licensePlate = _shipper?.licensePlate ?? order.shipperLicensePlate ?? "---";
 
     return Scaffold(
       appBar: AppBar(
@@ -249,16 +284,37 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black12)],
                           ),
                           child: Text(
-                            order.trangThaiDon,
+                            order.status.displayName,
                             style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 13),
                           ),
                         ),
                       ),
+                      // Chỉ báo GPS thực tế
+                      if (_shipper?.currentLat != null)
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.gps_fixed, color: Colors.white, size: 12),
+                                SizedBox(width: 4),
+                                Text('GPS Thực tế', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -289,7 +345,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               if (_simulationStep < _routePoints.length - 1 && _routePoints.isNotEmpty) ...[
                                 const SizedBox(height: 6),
                                 Text(
-                                  "⏱️ Dự kiến giao trong: ~${widget.order.getEstimatedDeliveryMinutes(currentStep: _simulationStep, totalSteps: _routePoints.length)} phút",
+                                  "⏱️ Dự kiến giao trong: ~${_getEstimatedMinutes()} phút",
                                   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800, fontSize: 13),
                                 ),
                               ],
@@ -318,7 +374,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                     children: [
                                       Text('Shipper: $shipperName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                                       const SizedBox(height: 2),
-                                      const Text('⭐ 4.9 | Biển số: 59-X1 999.88', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                      Text(
+                                        '🏍️ Biển số: $licensePlate',
+                                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -349,6 +408,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                     order: order,
                                     currentPosition: _currentShipperPosition,
                                     routePoints: _routePoints,
+                                    shipper: _shipper,
                                   ),
                                 ),
                               );
@@ -373,7 +433,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                   children: [
                                     const Icon(Icons.storefront, color: Colors.orange, size: 20),
                                     const SizedBox(width: 8),
-                                    Expanded(child: Text('Từ: ${order.diaChiLay}', style: const TextStyle(fontSize: 13))),
+                                    Expanded(child: Text('Từ: ${order.pickupAddress}', style: const TextStyle(fontSize: 13))),
                                   ],
                                 ),
                                 const Divider(),
@@ -381,7 +441,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                   children: [
                                     const Icon(Icons.location_on, color: Colors.green, size: 20),
                                     const SizedBox(width: 8),
-                                    Expanded(child: Text('Đến: ${order.diaChiGiao}', style: const TextStyle(fontSize: 13))),
+                                    Expanded(child: Text('Đến: ${order.deliveryAddress}', style: const TextStyle(fontSize: 13))),
                                   ],
                                 ),
                               ],

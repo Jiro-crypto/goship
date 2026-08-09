@@ -1,21 +1,26 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/order_model.dart';
 import '../models/shipper_model.dart';
-import '../data/mock_shippers.dart';
+import '../data/repositories/shipper_repository.dart';
 import '../services/route_service.dart';
 
 class OSMMapScreen extends StatefulWidget {
   final OrderModel? order;
   final LatLng? currentPosition;
   final List<LatLng>? routePoints;
+  // Shipper có thể được truyền từ màn hình cha (OrderTrackingScreen)
+  // hoặc sẽ được load trực tiếp từ Firebase theo shipperId trong order
+  final ShipperModel? shipper;
 
   const OSMMapScreen({
     super.key,
     this.order,
     this.currentPosition,
     this.routePoints,
+    this.shipper,
   });
 
   @override
@@ -27,19 +32,47 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
   List<LatLng> _routePoints = [];
   bool _isLoading = true;
 
+  ShipperModel? _shipper;
+  StreamSubscription<ShipperModel?>? _shipperSub;
+
   @override
   void initState() {
     super.initState();
+    _shipper = widget.shipper;
     _loadRouteAndLocation();
+    _listenToShipperLocation();
+  }
+
+  @override
+  void dispose() {
+    _shipperSub?.cancel();
+    super.dispose();
+  }
+
+  /// Lắng nghe cập nhật vị trí GPS thực tế của Shipper từ Firebase
+  void _listenToShipperLocation() {
+    final shipperId = widget.order?.shipperId;
+    if (shipperId == null || shipperId.isEmpty) return;
+
+    _shipperSub = ShipperRepository().watchShipperLocation(shipperId).listen((shipperData) {
+      if (!mounted) return;
+      setState(() {
+        _shipper = shipperData;
+        // Nếu có GPS thực từ Firebase, cập nhật vị trí marker
+        if (shipperData?.currentLat != null && shipperData?.currentLng != null) {
+          _shipperPosition = LatLng(shipperData!.currentLat!, shipperData.currentLng!);
+        }
+      });
+    });
   }
 
   Future<void> _loadRouteAndLocation() async {
     final order = widget.order;
-    final pickupPoint = order != null && order.latLay != 0
-        ? LatLng(order.latLay, order.lngLay)
+    final pickupPoint = order != null && (order.pickupLat ?? 0) != 0
+        ? LatLng(order.pickupLat!, order.pickupLng!)
         : const LatLng(10.7719, 106.7038);
-    final deliveryPoint = order != null && order.latGiao != 0
-        ? LatLng(order.latGiao, order.lngGiao)
+    final deliveryPoint = order != null && (order.deliveryLat ?? 0) != 0
+        ? LatLng(order.deliveryLat!, order.deliveryLng!)
         : const LatLng(10.7905, 106.6775);
 
     if (widget.routePoints != null && widget.routePoints!.isNotEmpty) {
@@ -49,7 +82,10 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
     }
 
     setState(() {
-      if (widget.currentPosition != null) {
+      // Ưu tiên: GPS Firebase > vị trí truyền vào > simulation > pickup
+      if (widget.shipper?.currentLat != null) {
+        _shipperPosition = LatLng(widget.shipper!.currentLat!, widget.shipper!.currentLng!);
+      } else if (widget.currentPosition != null) {
         _shipperPosition = widget.currentPosition;
       } else if (_routePoints.isNotEmpty) {
         _shipperPosition = _routePoints[(_routePoints.length * 0.4).floor()];
@@ -67,21 +103,18 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
     }
 
     final order = widget.order;
-    final pickupPoint = order != null && order.latLay != 0
-        ? LatLng(order.latLay, order.lngLay)
+    final pickupPoint = order != null && (order.pickupLat ?? 0) != 0
+        ? LatLng(order.pickupLat!, order.pickupLng!)
         : const LatLng(10.7719, 106.7038);
-    final deliveryPoint = order != null && order.latGiao != 0
-        ? LatLng(order.latGiao, order.lngGiao)
+    final deliveryPoint = order != null && (order.deliveryLat ?? 0) != 0
+        ? LatLng(order.deliveryLat!, order.deliveryLng!)
         : const LatLng(10.7905, 106.6775);
 
-    String shipperName = "Chưa phân công";
-    if (order != null && order.maShipper.isNotEmpty) {
-      final found = MockShippers.shippers.firstWhere(
-        (s) => s.id == order.maShipper || s.name == order.maShipper,
-        orElse: () => ShipperModel(id: order.maShipper, name: order.maShipper, phone: "0901234567", isActive: true, distance: 1.0),
-      );
-      shipperName = found.name;
-    }
+    // Lấy tên shipper: ưu tiên stream Firebase, sau đó dùng denormalized data trong order
+    final shipperName = _shipper?.name
+        ?? order?.shipperName
+        ?? "Chưa phân công";
+    final hasRealGps = _shipper?.currentLat != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -116,7 +149,7 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
                 ),
               MarkerLayer(
                 markers: [
-                  // Marker Shipper
+                  // Marker Shipper (GPS thực tế hoặc simulation)
                   if (_shipperPosition != null)
                     Marker(
                       point: _shipperPosition!,
@@ -124,12 +157,20 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
                       height: 50,
                       child: Container(
                         padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(blurRadius: 4, color: Colors.black26)],
+                          boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+                          border: Border.all(
+                            color: hasRealGps ? Colors.green : Colors.blue,
+                            width: 2,
+                          ),
                         ),
-                        child: const Icon(Icons.directions_bike, color: Colors.blue, size: 34),
+                        child: Icon(
+                          Icons.directions_bike,
+                          color: hasRealGps ? Colors.green : Colors.blue,
+                          size: 34,
+                        ),
                       ),
                     ),
                   // Marker Lấy hàng
@@ -150,6 +191,7 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
               ),
             ],
           ),
+          // Bottom Info Card
           Positioned(
             bottom: 20,
             left: 16,
@@ -173,8 +215,29 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(8)),
-                          child: const Text('Đang di chuyển', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+                          decoration: BoxDecoration(
+                            color: hasRealGps ? Colors.green.shade100 : Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                hasRealGps ? Icons.gps_fixed : Icons.gps_not_fixed,
+                                size: 12,
+                                color: hasRealGps ? Colors.green : Colors.blue,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                hasRealGps ? 'GPS Thực tế' : 'Đang di chuyển',
+                                style: TextStyle(
+                                  color: hasRealGps ? Colors.green : Colors.blue,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -186,7 +249,7 @@ class _OSMMapScreenState extends State<OSMMapScreen> {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              'Giao tới: ${order.diaChiGiao}',
+                              'Giao tới: ${order.deliveryAddress}',
                               style: const TextStyle(fontSize: 13),
                               overflow: TextOverflow.ellipsis,
                             ),

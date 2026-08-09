@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; // File này được sinh tự động khi thêm Firebase
 import 'screens/login_screen.dart';
 import 'screens/customer/customer_home_screen.dart';
 import 'services/auth_service.dart';
@@ -7,12 +9,12 @@ import 'services/preference_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Khởi tạo tài khoản demo Khách hàng (customer@goship.vn / password)
-  await AuthService.initMockUser();
-  // Khởi tạo & tải danh sách đơn hàng đã lưu từ SharedPreferences
-  await PreferenceService.getOrders();
-  
-  // Kiểm tra xem trước đó người dùng có chọn ghi nhớ đăng nhập hay không
+  // Khởi tạo Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Kiểm tra trạng thái đăng nhập Firebase
   bool isLoggedIn = await AuthService.isLogin();
 
   runApp(MyApp(isLoggedIn: isLoggedIn));

@@ -32,7 +32,7 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
     super.initState();
 
     // Validate MSG_VR_04: Chỉ xem được khi đang giao
-    if (widget.order.status != 'delivering') {
+    if (widget.order.status != OrderStatus.delivering) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -56,8 +56,8 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
 
   // SỬ DỤNG ROUTE SERVICE CHUNG CHO CẢ KHÁCH HÀNG & SHIPPER
   Future<void> _fetchRouteFromOSRM() async {
-    final startPoint = LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude);
-    final endPoint = LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude);
+    final startPoint = LatLng(widget.order.pickupLat ?? 10.7719, widget.order.pickupLng ?? 106.7038);
+    final endPoint = LatLng(widget.order.deliveryLat ?? 10.7905, widget.order.deliveryLng ?? 106.6775);
 
     final RouteInfo routeInfo = await RouteService.getRouteInfo(startPoint, endPoint);
 
@@ -83,8 +83,8 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
   void _handleRoutingFallback() {
     setState(() { 
       _routePoints = [
-        LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
-        LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude),
+        LatLng(widget.order.pickupLat ?? 10.7719, widget.order.pickupLng ?? 106.7038),
+        LatLng(widget.order.deliveryLat ?? 10.7905, widget.order.deliveryLng ?? 106.6775),
       ];
       _etaText = "Không xác định";
       _distanceText = "N/A";
@@ -105,13 +105,13 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
       ..clear()
       ..add(
         Marker(
-          point: LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude),
+          point: LatLng(widget.order.pickupLat ?? 10.7719, widget.order.pickupLng ?? 106.7038),
           child: const Icon(Icons.store, color: Colors.orange, size: 32),
         ),
       )
       ..add(
         Marker(
-          point: LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude),
+          point: LatLng(widget.order.deliveryLat ?? 10.7905, widget.order.deliveryLng ?? 106.6775),
           child: const Icon(Icons.location_on, color: Colors.red, size: 32),
         ),
       );
@@ -203,7 +203,7 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.order.status != 'delivering') {
+    if (widget.order.status != OrderStatus.delivering) {
       return const Scaffold(); 
     }
 

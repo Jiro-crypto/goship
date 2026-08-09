@@ -1,22 +1,30 @@
-/// ===============================
-/// Entity: DIEUPHOIVIEN (LAB 3)
-/// Bảng DIEUPHOIVIEN: MaDPV, TenDPV, PhoneDPV
-/// ===============================
 class DispatcherModel {
-  final String maDPV;
-  final String tenDPV;
-  final String phoneDPV;
-
-  final String email;
-  bool isOnline;
-  int soDonDaPhanCongTrongNgay; // KHÔNG final - tăng mỗi lần phân công
+  final String uid;
+  final String dispatcherId;
+  final String name;
+  final String phone;
 
   DispatcherModel({
-    required this.maDPV,
-    required this.tenDPV,
-    required this.phoneDPV,
-    this.email = "",
-    this.isOnline = true,
-    this.soDonDaPhanCongTrongNgay = 0,
+    required this.uid,
+    required this.dispatcherId,
+    required this.name,
+    required this.phone,
   });
+
+  factory DispatcherModel.fromMap(Map<String, dynamic> data, String id) {
+    return DispatcherModel(
+      uid: id,
+      dispatcherId: data['dispatcherId'] ?? '',
+      name: data['name'] ?? '',
+      phone: data['phone'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'dispatcherId': dispatcherId,
+      'name': name,
+      'phone': phone,
+    };
+  }
 }

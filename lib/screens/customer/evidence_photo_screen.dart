@@ -52,8 +52,8 @@ class EvidencePhotoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primaryColor = Colors.orange.shade800;
-    final imageUrl = order.urlAnhMinhChung ?? 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800';
-    final completedTime = order.thoiGianHoanThanh ?? DateTime.now();
+    final imageUrl = order.invoice?.imageUrl ?? 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800';
+    final completedTime = order.completedAt ?? DateTime.now();
 
     return Scaffold(
       appBar: AppBar(
@@ -70,7 +70,7 @@ class EvidencePhotoScreen extends StatelessWidget {
             Card(
               child: ListTile(
                 title: Text('Mã đơn: ${order.orderId}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Người nhận: ${order.tenNguoiNhan} - ${order.sdtNguoiNhan}'),
+                subtitle: Text('Người nhận: ${order.receiverName} - ${order.receiverPhone}'),
                 trailing: const Icon(Icons.verified, color: Colors.green, size: 28),
               ),
             ),
@@ -115,25 +115,26 @@ class EvidencePhotoScreen extends StatelessWidget {
                       const Icon(Icons.my_location, size: 18, color: Colors.red),
                       const SizedBox(width: 6),
                       Text(
-                        'Tọa độ GPS thực tế: ${(order.latChup ?? order.latGiao).toStringAsFixed(5)}, ${(order.lngChup ?? order.lngGiao).toStringAsFixed(5)}',
+                        'Tọa độ GPS thực tế: ${(order.invoice?.confirmLat ?? order.deliveryLat ?? 0).toStringAsFixed(5)}, ${(order.invoice?.confirmLng ?? order.deliveryLng ?? 0).toStringAsFixed(5)}',
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.pin_drop, size: 18, color: Colors.green),
                       const SizedBox(width: 6),
-                      Expanded(child: Text('Địa chỉ: ${order.diaChiGiao}')),
+                      Expanded(child: Text('Địa chỉ: ${order.deliveryAddress}')),
                     ],
                   ),
-                  if (order.maShipper.isNotEmpty) ...[
+                  if (order.shipperId?.isNotEmpty == true) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         const Icon(Icons.delivery_dining, size: 18, color: Colors.orange),
                         const SizedBox(width: 6),
-                        Text('Mã Shipper thực hiện: ${order.maShipper}'),
+                        Text('Mã Shipper thực hiện: ${order.shipperId}'),
                       ],
                     ),
                   ],

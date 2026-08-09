@@ -1,11 +1,13 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/order_model.dart';
-import '../../data/mock_orders.dart';
+import '../../data/repositories/order_repository.dart';
+import '../../data/repositories/auth_repository.dart';
+import '../../data/repositories/shipper_repository.dart';
+import '../../services/preference_service.dart';
 import '../login_screen.dart';
-import '../../services/auth_service.dart';
-import '../../services/reject_counter_service.dart';
 import 'shipper_order_detail_screen.dart';
 
 class ShipperHomeScreen extends StatefulWidget {
@@ -20,67 +22,39 @@ class _ShipperHomeScreenState extends State<ShipperHomeScreen> with SingleTicker
   final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
   final Color primaryColor = Colors.orange.shade800;
 
+  // Lấy shipperId từ Firebase Auth
+  String get _shipperId => FirebaseAuth.instance.currentUser?.uid ?? '';
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   void _logout() async {
-    await AuthService.logout();
+    await AuthRepository().logout();
+    await PreferenceService.clearLogin();
     if (!mounted) return;
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
-  void _refreshScreen() {
-    setState(() {}); 
-  }
-
-  void _simulateIncomingOrder() {
-    final newOrder = OrderModel(
-      id: "ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
-      senderName: "Kho tổng LogiRoute",
-      senderPhone: "19001234",
-      receiverName: "Nguyễn Văn Khách",
-      receiverPhone: "0909123456",
-      pickupAddress: "123 Đường Lấy Hàng, Quận 1, TP.HCM",
-      deliveryAddress: "456 Đường Giao, Quận 7, TP.HCM",
-      price: 350000.0,
-      deliveryFee: 15000.0,
-      status: "pending_acceptance",
-      pickupLatitude: 10.7769,
-      pickupLongitude: 106.7009,
-      deliveryLatitude: 10.7300,
-      deliveryLongitude: 106.7200,
-    );
-
-    setState(() {
-      MockOrders.orders.insert(0, newOrder);
-      _tabController.animateTo(0);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Bạn có 1 đơn hàng mới vừa được phân công"),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 4),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  // HÀM HIỂN THỊ TRẠNG THÁI (UI Badge)
-  Widget _buildStatusBadge(String status) {
+  // HÀM HIỂN THỊ TRẠNG THÁI (UI Badge) - dùng OrderStatus.displayName
+  Widget _buildStatusBadge(OrderStatus status) {
     Color color;
-    String text;
     switch (status) {
-      case 'pending_acceptance': color = Colors.orange; text = "Chờ nhận"; break;
-      case 'waiting_delivery': color = Colors.blue; text = "Chờ giao"; break;
-      case 'delivering': color = Colors.cyan.shade700; text = "Đang giao"; break;
-      case 'delivered': color = Colors.green; text = "Đã giao"; break;
-      case 'failed': color = Colors.deepOrange; text = "Giao thất bại"; break;
-      case 'cancelled': color = Colors.grey.shade600; text = "Đã bị hủy"; break;
-      default: color = Colors.black; text = "Không rõ";
+      case OrderStatus.waitingForAcceptance: color = Colors.orange; break;
+      case OrderStatus.waitingForPickup: color = Colors.blue; break;
+      case OrderStatus.delivering: color = Colors.cyan.shade700; break;
+      case OrderStatus.delivered: color = Colors.green; break;
+      case OrderStatus.deliveryFailed: color = Colors.deepOrange; break;
+      case OrderStatus.cancelled: color = Colors.grey.shade600; break;
+      default: color = Colors.black;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -89,79 +63,106 @@ class _ShipperHomeScreenState extends State<ShipperHomeScreen> with SingleTicker
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.5)),
       ),
-      child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+      child: Text(status.displayName, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
     );
   }
 
   Widget _buildOrderList(String filterStatus) {
-    // Lịch sử sẽ gộp cả 3 trạng thái: Đã giao, Giao thất bại, Đã bị hủy
-    List<OrderModel> filteredList = MockOrders.orders.where((o) {
-      if (filterStatus == 'history') {
-        return o.status == 'delivered' || o.status == 'failed' || o.status == 'cancelled';
-      }
-      return o.status == filterStatus;
-    }).toList();
+    // Xác định stream Firebase tương ứng với mỗi tab
+    Stream<List<OrderModel>> stream;
 
-    if (filteredList.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text("Không có đơn hàng nào.", style: TextStyle(color: Colors.grey.shade600)),
-          ],
-        ),
-      );
+    if (_shipperId.isEmpty) {
+      // Demo mode (chưa đăng nhập Firebase): hiển thị đơn chờ nhận không có shipper
+      stream = OrderRepository().getOrdersByStatus(OrderStatus.waitingForAcceptance);
+    } else if (filterStatus == 'history') {
+      // Lịch sử: lấy đơn của shipper này có trạng thái hoàn tất
+      stream = OrderRepository().getOrdersByShipperHistory(_shipperId);
+    } else {
+      final statusMap = {
+        'pending_acceptance': OrderStatus.waitingForAcceptance,
+        'waiting_delivery': OrderStatus.waitingForPickup,
+        'delivering': OrderStatus.delivering,
+      };
+      final orderStatus = statusMap[filterStatus];
+      if (orderStatus != null) {
+        stream = OrderRepository().getOrdersByShipper(_shipperId, status: orderStatus);
+      } else {
+        stream = OrderRepository().getOrdersByShipper(_shipperId);
+      }
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: filteredList.length,
-      itemBuilder: (context, index) {
-        final order = filteredList[index];
+    return StreamBuilder<List<OrderModel>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-        if (order.status == 'pending_acceptance') {
-          return OrderAcceptanceCard(
-            order: order,
-            onRefresh: _refreshScreen,
+        final orders = snapshot.data ?? [];
+
+        if (orders.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                Text("Không có đơn hàng nào.", style: TextStyle(color: Colors.grey.shade600)),
+              ],
+            ),
           );
         }
 
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            title: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Mã đơn: ${order.id}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                _buildStatusBadge(order.status), // Gọi hàm hiển thị Status
-              ],
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                Text("📍 Lấy: ${order.pickupAddress}"),
-                Text("🚚 Giao: ${order.deliveryAddress}"),
-                const SizedBox(height: 8),
-                Text(
-                  "Tiền COD: ${currencyFormatter.format(order.price)}",
-                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => ShipperOrderDetailScreen(order: order)),
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: orders.length,
+          itemBuilder: (context, index) {
+            final order = orders[index];
+
+            if (order.status == OrderStatus.waitingForAcceptance) {
+              return OrderAcceptanceCard(
+                order: order,
+                shipperId: _shipperId,
               );
-              _refreshScreen(); 
-            },
-          ),
+            }
+
+            return Card(
+              elevation: 2,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(16),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text("Mã đơn: ${order.orderId}", style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                    ),
+                    _buildStatusBadge(order.status),
+                  ],
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 8),
+                    Text("📍 Lấy: ${order.pickupAddress}"),
+                    Text("🚚 Giao: ${order.deliveryAddress}"),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Tiền COD: ${currencyFormatter.format(order.codAmount)}",
+                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ShipperOrderDetailScreen(order: order)),
+                  );
+                },
+              ),
+            );
+          },
         );
       },
     );
@@ -173,13 +174,13 @@ class _ShipperHomeScreenState extends State<ShipperHomeScreen> with SingleTicker
       appBar: AppBar(
         title: const Text("GoShip Shipper", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: primaryColor,
-        iconTheme: const IconThemeData(color: Colors.white), // Đổi màu icon đăng xuất thành trắng
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [IconButton(icon: const Icon(Icons.logout), onPressed: _logout)],
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
-          labelColor: Colors.white, 
-          unselectedLabelColor: Colors.white70, 
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
           indicatorColor: Colors.white,
           tabs: const [
             Tab(text: "Đơn mới"),
@@ -193,16 +194,10 @@ class _ShipperHomeScreenState extends State<ShipperHomeScreen> with SingleTicker
         controller: _tabController,
         children: [
           _buildOrderList("pending_acceptance"),
-          _buildOrderList("waiting_delivery"),   
-          _buildOrderList("delivering"),         
-          _buildOrderList("history"), // Thay vì chỉ 'delivered', ta dùng 'history'
+          _buildOrderList("waiting_delivery"),
+          _buildOrderList("delivering"),
+          _buildOrderList("history"),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _simulateIncomingOrder,
-        backgroundColor: primaryColor,
-        icon: const Icon(Icons.add_alert),
-        label: const Text("Demo nhận đơn"),
       ),
     );
   }
@@ -213,9 +208,13 @@ class _ShipperHomeScreenState extends State<ShipperHomeScreen> with SingleTicker
 // ============================================================================
 class OrderAcceptanceCard extends StatefulWidget {
   final OrderModel order;
-  final VoidCallback onRefresh;
+  final String shipperId;
 
-  const OrderAcceptanceCard({super.key, required this.order, required this.onRefresh});
+  const OrderAcceptanceCard({
+    super.key,
+    required this.order,
+    required this.shipperId,
+  });
 
   @override
   State<OrderAcceptanceCard> createState() => _OrderAcceptanceCardState();
@@ -225,6 +224,7 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
   // BR_receiveOrder: Đếm ngược 60 giây để Shipper tiếp nhận hoặc từ chối đơn hàng
   int _timeLeft = 60;
   Timer? _timer;
+  bool _isProcessing = false;
 
   @override
   void initState() {
@@ -235,12 +235,10 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_timeLeft > 0) {
-        setState(() {
-          _timeLeft--;
-        });
+        setState(() => _timeLeft--);
       } else {
         _timer?.cancel();
-        _autoAcceptOrder();
+        _handleTimeout();
       }
     });
   }
@@ -251,38 +249,54 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
     super.dispose();
   }
 
-  void _acceptOrder() {
+  // UC03: Shipper nhận đơn → cập nhật Firebase
+  void _acceptOrder() async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
     _timer?.cancel();
-    widget.order.status = "waiting_delivery";
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Xác nhận tiếp nhận đơn hàng thành công."), backgroundColor: Colors.green),
-    );
-    widget.onRefresh();
-  }
 
-  void _autoAcceptOrder() {
-    widget.order.status = "waiting_delivery";
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Đã quá 1 phút, đơn hàng đã được tự động nhận."), backgroundColor: Colors.orange),
-    );
-    widget.onRefresh();
-  }
-
-  // Luồng xử lý TỪ CHỐI ĐƠN HÀNG (UC014 & BR_cancelByShipper_02)
-  void _showRejectDialog() async {
-    // BR_cancelByShipper_02: Giới hạn tối đa 3 đơn/ngày (Lưu bền vững qua SharedPreferences)
-    final bool canReject = await RejectCounterService.canReject();
-    if (!canReject) {
+    try {
+      await OrderRepository().acceptOrder(widget.order.orderId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Không thể từ chối vì bạn đã từ chối quá 3 lần trong ngày hôm nay!"),
-          backgroundColor: Colors.red,
+        const SnackBar(content: Text("Xác nhận tiếp nhận đơn hàng thành công."), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Lỗi khi nhận đơn: $e"), backgroundColor: Colors.red),
+      );
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  // UC03: Timeout 60s → gọi handleOrderTimeout() trên Firebase
+  void _handleTimeout() async {
+    if (_isProcessing || widget.shipperId.isEmpty) return;
+    setState(() => _isProcessing = true);
+
+    try {
+      final autoAccepted = await OrderRepository().handleOrderTimeout(
+        orderId: widget.order.orderId,
+        shipperId: widget.shipperId,
+        shipperName: widget.order.shipperName ?? '',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(autoAccepted
+              ? "Đã quá 1 phút, đơn hàng đã được tự động nhận."
+              : "Đã quá 1 phút, đơn hàng bị tự động từ chối (chưa đủ 3 lần hôm nay)."),
+          backgroundColor: autoAccepted ? Colors.orange : Colors.red,
         ),
       );
-      return;
+    } catch (e) {
+      // Xử lý lỗi âm thầm
     }
+  }
 
+  // UC17: Từ chối đơn hàng → rejectOrder() trên Firebase
+  void _showRejectDialog() async {
     String selectedReason = "Xe hỏng / Gặp tai nạn";
     final TextEditingController otherReasonController = TextEditingController();
 
@@ -343,24 +357,42 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
                       return;
                     }
 
+                    final finalReason = selectedReason == "Lý do khác"
+                        ? otherReasonController.text.trim()
+                        : selectedReason;
+
                     final messenger = ScaffoldMessenger.of(context);
+                    Navigator.pop(dialogCtx);
+                    _timer?.cancel();
+                    setState(() => _isProcessing = true);
 
-                    Navigator.pop(dialogCtx); // Đóng Dialog
-                    _timer?.cancel(); // Dừng bộ đếm 60s
+                    try {
+                      // UC17: Ghi rejection_log + reset đơn về 'Chờ phân công'
+                      final log = await OrderRepository().rejectOrder(
+                        orderId: widget.order.orderId,
+                        shipperId: widget.shipperId,
+                        shipperName: widget.order.shipperName ?? '',
+                        reason: finalReason,
+                      );
 
-                    // Tăng số lần từ chối bền vững
-                    await RejectCounterService.incrementRejectCount();
-                    final int currentCount = await RejectCounterService.getTodayRejectCount();
+                      // UC03: Cũng tăng dailyRejectionCount trên Firebase
+                      await ShipperRepository().updateShipperRejectionCount(widget.shipperId);
 
-                    widget.order.status = "cancelled";
+                      // Đọc số lần từ chối hôm nay để hiển thị
+                      final shipperData = await ShipperRepository().getShipperById(widget.shipperId);
+                      final count = shipperData?.dailyRejectionCount ?? 1;
 
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text("Đã từ chối đơn hàng thành công. Đã từ chối $currentCount/3 lần hôm nay."),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    widget.onRefresh();
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text("Đã từ chối đơn hàng thành công. Đã từ chối $count/3 lần hôm nay."),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    } catch (e) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text("Lỗi khi từ chối đơn: $e"), backgroundColor: Colors.red),
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                   child: const Text("GỬI LÝ DO", style: TextStyle(color: Colors.white)),
@@ -376,6 +408,7 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
   @override
   Widget build(BuildContext context) {
     final String formattedTimer = "${(_timeLeft ~/ 60).toString().padLeft(2, '0')}:${(_timeLeft % 60).toString().padLeft(2, '0')}";
+    final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
     return Card(
       elevation: 4,
@@ -401,13 +434,24 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
               contentPadding: EdgeInsets.zero,
               title: Text("Lấy: ${widget.order.pickupAddress}", maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text("Giao: ${widget.order.deliveryAddress}", maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: Text("${widget.order.price} đ", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red)),
+              trailing: Text(currencyFormatter.format(widget.order.codAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.red)),
             ),
             Row(
               children: [
-                Expanded(child: OutlinedButton(onPressed: _showRejectDialog, child: const Text("TỪ CHỐI", style: TextStyle(color: Colors.red)))),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isProcessing ? null : _showRejectDialog,
+                    child: const Text("TỪ CHỐI", style: TextStyle(color: Colors.red)),
+                  ),
+                ),
                 const SizedBox(width: 10),
-                Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: _acceptOrder, child: const Text("XÁC NHẬN", style: TextStyle(color: Colors.white)))),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                    onPressed: _isProcessing ? null : _acceptOrder,
+                    child: const Text("XÁC NHẬN", style: TextStyle(color: Colors.white)),
+                  ),
+                ),
               ],
             )
           ],

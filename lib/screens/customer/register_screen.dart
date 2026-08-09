@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../services/auth_service.dart';
-import '../../models/user_model.dart';
+import '../../data/repositories/auth_repository.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -36,34 +35,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final emailInput = _emailController.text.trim();
-      final bool exists = await AuthService.isExistEmail(emailInput);
-      if (exists) {
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Email này đã được đăng ký! Vui lòng dùng Email khác hoặc Đăng nhập.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final user = UserModel(
-        fullName: _nameController.text.trim(),
+      final result = await AuthRepository().registerCustomer(
         email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
         password: _passwordController.text.trim(),
-        avatar: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
-        gender: "Nam",
-        city: "TP. Hồ Chí Minh",
+        name: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
       );
 
-      final result = await AuthService.register(user);
       if (!mounted) return;
 
       if (result) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đăng ký thất bại. Vui lòng thử lại hoặc email đã được sử dụng!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Đăng ký tài khoản thành công! Vui lòng đăng nhập.'),
@@ -74,13 +62,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'email': _emailController.text.trim(),
           'password': _passwordController.text.trim(),
         });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đăng ký thất bại. Vui lòng thử lại!'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     } catch (e) {
       if (!mounted) return;

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/order_model.dart';
-import '../../services/preference_service.dart';
+import '../../data/repositories/order_repository.dart';
 import 'payment_success_screen.dart';
 import 'customer_home_screen.dart';
 
@@ -91,26 +91,49 @@ class _PaymentQRScreenState extends State<PaymentQRScreen> {
     _timer?.cancel();
     setState(() => _isProcessing = true);
 
-    // Save transaction ID and order permanently to SharedPreferences & memory
-    final String txnId = "TXN-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}";
-    widget.order.transactionId = txnId;
-    widget.order.trangThaiDon = 'Chờ giao';
-    await PreferenceService.saveOrder(widget.order);
+    try {
+      // Gọi repository để lưu lên Firebase thực tế
+      OrderModel newOrder = await OrderRepository().createOrder(
+        receiverName: widget.order.receiverName,
+        receiverPhone: widget.order.receiverPhone,
+        pickupAddress: widget.order.pickupAddress,
+        deliveryAddress: widget.order.deliveryAddress,
+        codAmount: widget.order.codAmount,
+        shippingFee: widget.order.shippingFee,
+        weight: widget.order.weight,
+        category: widget.order.category,
+        size: widget.order.size,
+        quantity: widget.order.quantity,
+        note: widget.order.note,
+        pickupLat: widget.order.pickupLat,
+        pickupLng: widget.order.pickupLng,
+        deliveryLat: widget.order.deliveryLat,
+        deliveryLng: widget.order.deliveryLng,
+      );
 
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PaymentSuccessScreen(order: widget.order),
-      ),
-    );
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PaymentSuccessScreen(order: newOrder),
+        ),
+      );
+    } catch (e) {
+      setState(() => _isProcessing = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi tạo đơn hàng: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = Colors.orange.shade800;
-    final totalAmount = widget.order.phiShip > 0 ? widget.order.phiShip : 25000.0;
-    final qrUrl = 'https://img.vietqr.io/image/970436-9999999999-compact2.png?amount=${totalAmount.toInt()}&addInfo=${widget.order.orderId}&accountName=LOGIROUTE%20GOSHIP';
+    final totalAmount = widget.order.shippingFee > 0 ? widget.order.shippingFee : 25000.0;
+    
+    // Yêu cầu gán cứng URL hình ảnh QR:
+    const String qrUrl = "https://scontent.fsgn5-15.fna.fbcdn.net/v/t1.15752-9/763331742_1705026093880141_6903147646147597855_n.jpg?_nc_cat=102&_nc_map=urlgen_bucketless&ccb=1-7&_nc_sid=9f807c&_nc_ohc=EiaDhme49DoQ7kNvwGGdZ5Q&_nc_oc=AdpeVRherTYXIXauCbQwOP1LyFn-QMntmvnRqjbwAlq-koVP74gvDkLHpk_RvIPag2W68F8zZf5GpkulzSjctV5S&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent.fsgn5-15.fna&_nc_ss=7a22e&oh=03_Q7cD6AEG3k2BLOxyU1J3tEjVOV9EvWYspcie_fvzOCYOwZPjjg&oe=6A9FE92C";
 
     return Scaffold(
       appBar: AppBar(
@@ -164,8 +187,8 @@ class _PaymentQRScreenState extends State<PaymentQRScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Mã đơn hàng:', style: TextStyle(color: Colors.grey)),
-                        Text(widget.order.orderId, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const Text('Trạng thái:', style: TextStyle(color: Colors.grey)),
+                        const Text('Tạm tính', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       ],
                     ),
                     const SizedBox(height: 6),
