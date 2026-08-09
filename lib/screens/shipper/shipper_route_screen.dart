@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
 import '../../models/order_model.dart';
+import '../../services/route_service.dart';
 
 class ShipperRouteScreen extends StatefulWidget {
   final OrderModel order;
@@ -55,44 +54,27 @@ class _ShipperRouteScreenState extends State<ShipperRouteScreen> {
     super.dispose();
   }
 
-  // GỌI API OSRM ĐỂ LẤY TUYẾN ĐƯỜNG THỰC TẾ
+  // SỬ DỤNG ROUTE SERVICE CHUNG CHO CẢ KHÁCH HÀNG & SHIPPER
   Future<void> _fetchRouteFromOSRM() async {
-    // API OSRM yêu cầu tọa độ gửi lên theo thứ tự: Kinh độ (Lng), Vĩ độ (Lat)
-    final startLng = widget.order.pickupLongitude;
-    final startLat = widget.order.pickupLatitude;
-    final endLng = widget.order.deliveryLongitude;
-    final endLat = widget.order.deliveryLatitude;
+    final startPoint = LatLng(widget.order.pickupLatitude, widget.order.pickupLongitude);
+    final endPoint = LatLng(widget.order.deliveryLatitude, widget.order.deliveryLongitude);
 
-    final url = 'https://router.project-osrm.org/route/v1/driving/$startLng,$startLat;$endLng,$endLat?overview=full&geometries=geojson';
+    final RouteInfo routeInfo = await RouteService.getRouteInfo(startPoint, endPoint);
 
-    try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final route = data['routes'][0];
-        final List coordinates = route['geometry']['coordinates'];
-        
-        // Trích xuất ETA (giây) và Quãng đường (mét) từ JSON
-        final double durationSeconds = (route['duration'] as num).toDouble();
-        final double distanceMeters = (route['distance'] as num).toDouble();
+    if (!mounted) return;
 
-        setState(() {
-          // Parse tọa độ GeoJSON (Lng, Lat) thành LatLng (Lat, Lng) của flutter_map
-          _routePoints = coordinates.map((c) => LatLng(c[1], c[0])).toList();
-          
-          _etaText = "${(durationSeconds / 60).ceil()} phút";
-          _distanceText = "${(distanceMeters / 1000).toStringAsFixed(1)} km";
-          
-          _isLoadingRoute = false;
-          _currentShipperPosition = _routePoints[0];
-          
-          _initStaticMarkersAndPolylines();
-          _startShipperSimulation();
-        });
-      } else {
-        _handleRoutingFallback();
-      }
-    } catch (e) {
+    if (routeInfo.isSuccess) {
+      setState(() {
+        _routePoints = routeInfo.points;
+        _etaText = "${routeInfo.durationMinutes} phút";
+        _distanceText = "${routeInfo.distanceKm.toStringAsFixed(1)} km";
+        _isLoadingRoute = false;
+        _currentShipperPosition = _routePoints[0];
+
+        _initStaticMarkersAndPolylines();
+        _startShipperSimulation();
+      });
+    } else {
       _handleRoutingFallback();
     }
   }
