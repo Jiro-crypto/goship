@@ -5,10 +5,8 @@ import '../../models/order_model.dart';
 import '../../data/mock_orders.dart';
 import '../login_screen.dart';
 import '../../services/auth_service.dart';
+import '../../services/reject_counter_service.dart';
 import 'shipper_order_detail_screen.dart';
-
-// Biến toàn cục để giả lập đếm số lần từ chối trong ngày (BR_cancelByShipper_02)
-int demoDailyRejectCount = 0;
 
 class ShipperHomeScreen extends StatefulWidget {
   const ShipperHomeScreen({super.key});
@@ -224,7 +222,8 @@ class OrderAcceptanceCard extends StatefulWidget {
 }
 
 class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
-  int _timeLeft = 10;
+  // BR_receiveOrder: Đếm ngược 60 giây để Shipper tiếp nhận hoặc từ chối đơn hàng
+  int _timeLeft = 60;
   Timer? _timer;
 
   @override
@@ -269,10 +268,12 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
     widget.onRefresh();
   }
 
-  // Luồng xử lý TỪ CHỐI ĐƠN HÀNG (UC014)
-  void _showRejectDialog() {
-    // BR_cancelByShipper_02: Giới hạn tối đa 3 đơn/ngày
-    if (demoDailyRejectCount >= 3) {
+  // Luồng xử lý TỪ CHỐI ĐƠN HÀNG (UC014 & BR_cancelByShipper_02)
+  void _showRejectDialog() async {
+    // BR_cancelByShipper_02: Giới hạn tối đa 3 đơn/ngày (Lưu bền vững qua SharedPreferences)
+    final bool canReject = await RejectCounterService.canReject();
+    if (!canReject) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Không thể từ chối vì bạn đã từ chối quá 3 lần trong ngày hôm nay!"),
@@ -283,16 +284,18 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
     }
 
     String selectedReason = "Xe hỏng / Gặp tai nạn";
-    TextEditingController otherReasonController = TextEditingController();
+    final TextEditingController otherReasonController = TextEditingController();
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder( // Để setState hoạt động bên trong Dialog
+      builder: (dialogCtx) {
+        return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text("Xác nhận từ chối?"), // MS_DeniedOrder_01
+              title: const Text("Xác nhận từ chối?"),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -327,26 +330,35 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context), // Đóng dialog, đếm ngược vẫn chạy
+                  onPressed: () => Navigator.pop(dialogCtx),
                   child: const Text("HỦY BỎ", style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    // BR_cancelByShipper_01: Bắt buộc nhập lý do
+                  onPressed: () async {
+                    // BR_cancelByShipper_01: Bắt buộc nhập lý do nếu chọn 'Lý do khác'
                     if (selectedReason == "Lý do khác" && otherReasonController.text.trim().isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text("Vui lòng nhập lý do cụ thể!"), backgroundColor: Colors.red),
                       );
                       return;
                     }
-                    
-                    Navigator.pop(context); // Đóng Dialog
-                    _timer?.cancel(); // Dừng bộ đếm
-                    demoDailyRejectCount++; // Tăng biến đếm
 
-                    widget.order.status = "cancelled"; 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("Đơn hàng bạn giao đã bị shipper từ chối. Đã từ chối $demoDailyRejectCount/3 lần."), backgroundColor: Colors.red),
+                    final messenger = ScaffoldMessenger.of(context);
+
+                    Navigator.pop(dialogCtx); // Đóng Dialog
+                    _timer?.cancel(); // Dừng bộ đếm 60s
+
+                    // Tăng số lần từ chối bền vững
+                    await RejectCounterService.incrementRejectCount();
+                    final int currentCount = await RejectCounterService.getTodayRejectCount();
+
+                    widget.order.status = "cancelled";
+
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text("Đã từ chối đơn hàng thành công. Đã từ chối $currentCount/3 lần hôm nay."),
+                        backgroundColor: Colors.red,
+                      ),
                     );
                     widget.onRefresh();
                   },
@@ -355,7 +367,7 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
                 ),
               ],
             );
-          }
+          },
         );
       },
     );
@@ -363,6 +375,8 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
 
   @override
   Widget build(BuildContext context) {
+    final String formattedTimer = "${(_timeLeft ~/ 60).toString().padLeft(2, '0')}:${(_timeLeft % 60).toString().padLeft(2, '0')}";
+
     return Card(
       elevation: 4,
       color: Colors.orange.shade50,
@@ -378,7 +392,7 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
-                  child: Text("00:${_timeLeft.toString().padLeft(2, '0')}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: Text(formattedTimer, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )
               ],
             ),

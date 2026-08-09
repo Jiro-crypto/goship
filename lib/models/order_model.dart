@@ -43,13 +43,13 @@ class OrderModel {
   String trangThaiDon; // Chờ phân công, Chờ giao, Đang giao, Đã giao, Đã hủy, Giao thất bại
   final DateTime thoiGianTao;
   final DateTime? thoiGianPhanCong;
-  final DateTime? thoiGianHoanThanh;
+  DateTime? thoiGianHoanThanh;
   String? lyDoHuy;
   String? nguoiHuy; // 'KhachHang' hoặc 'DieuPhoiVien'
   final String? danhMucHang;
   final String? kichThuoc;
   final int? soLuong;
-  final String? urlAnhMinhChung;
+  String? urlAnhMinhChung;
   final String senderName;
   final String senderPhone;
   double? latChup;
