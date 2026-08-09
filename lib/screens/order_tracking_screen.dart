@@ -45,10 +45,20 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         ? LatLng(widget.order.latGiao, widget.order.lngGiao)
         : const LatLng(10.7905, 106.6775);
 
-    // Fetch actual street route points from OSRM
-    _routePoints = await RouteService.getRoutePoints(pickupPoint, deliveryPoint);
+    // Dùng RouteService dùng chung lấy tuyến đường thực tế từ OSRM
+    final RouteInfo routeInfo = await RouteService.getRouteInfo(pickupPoint, deliveryPoint);
+    _routePoints = routeInfo.points;
 
     if (!mounted) return;
+
+    if (!routeInfo.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Không thể kết nối máy chủ OSRM, đang hiển thị đường chim bay."), 
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
 
     // Resume simulation step based on real elapsed time since assignment
     if (_routePoints.isNotEmpty) {
