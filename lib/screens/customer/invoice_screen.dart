@@ -78,7 +78,7 @@ class InvoiceScreen extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Mã giao dịch:'),
+                          const Expanded(child: Text('Mã giao dịch:')),
                           Text(order.transactionId!, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
                         ],
                       ),
@@ -87,7 +87,7 @@ class InvoiceScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Phí vận chuyển (Quãng đường + Khối lượng):'),
+                        const Expanded(child: Text('Phí vận chuyển:')),
                         Text(currencyFormatter.format(order.phiShip)),
                       ],
                     ),
@@ -95,7 +95,7 @@ class InvoiceScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Tiền thu hộ COD (Shipper thu khi giao):'),
+                        const Expanded(child: Text('Tiền thu hộ COD:')),
                         Text(
                           currencyFormatter.format(order.tienCOD),
                           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800),
@@ -106,7 +106,7 @@ class InvoiceScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('TỔNG GIÁ TRỊ ĐƠN HÀNG:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        const Expanded(child: Text('TỔNG GIÁ TRỊ ĐƠN HÀNG:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
                         Text(
                           currencyFormatter.format(order.phiShip + order.tienCOD),
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor),
