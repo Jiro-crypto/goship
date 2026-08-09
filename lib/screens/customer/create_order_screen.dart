@@ -232,10 +232,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   counterText: '',
                   suffixIcon: _isGeocodingLay
                       ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))
-                      : IconButton(
-                          icon: const Icon(Icons.pin_drop, color: Colors.blue),
-                          onPressed: () => _geocodeAddress(_diaChiLayController.text, isLay: true),
-                        ),
+                      : null,
                   border: const OutlineInputBorder(),
                 ),
                 validator: (v) {
@@ -257,10 +254,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   counterText: '',
                   suffixIcon: _isGeocodingGiao
                       ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))
-                      : IconButton(
-                          icon: const Icon(Icons.pin_drop, color: Colors.red),
-                          onPressed: () => _geocodeAddress(_diaChiGiaoController.text, isLay: false),
-                        ),
+                      : null,
                   border: const OutlineInputBorder(),
                 ),
                 validator: (v) {

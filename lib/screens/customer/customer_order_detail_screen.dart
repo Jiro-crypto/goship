@@ -313,7 +313,7 @@ class _CustomerOrderDetailScreenState extends State<CustomerOrderDetailScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Phí vận chuyển (Khách trả):'),
+                        const Expanded(child: Text('Phí vận chuyển:')),
                         Text(
                           currencyFormatter.format(order.phiShip),
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
@@ -324,7 +324,7 @@ class _CustomerOrderDetailScreenState extends State<CustomerOrderDetailScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Tiền thu hộ COD (Shipper thu):'),
+                        const Expanded(child: Text('Tiền thu hộ COD:')),
                         Text(
                           currencyFormatter.format(order.tienCOD),
                           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800),
@@ -335,7 +335,7 @@ class _CustomerOrderDetailScreenState extends State<CustomerOrderDetailScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('TỔNG GIÁ TRỊ ĐƠN HÀNG:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Expanded(child: Text('TỔNG GIÁ TRỊ ĐƠN HÀNG:', style: TextStyle(fontWeight: FontWeight.bold))),
                         Text(
                           currencyFormatter.format(order.phiShip + order.tienCOD),
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: primaryColor),
