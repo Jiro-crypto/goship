@@ -446,7 +446,7 @@ class OrderRepository {
     }
   }
 
-  // --- UC03: Xử lý timeout 60 giây khi Shipper không phản hồi ---
+  // --- UC03: Xử lý timeout 600 giây khi Shipper không phản hồi ---
   //
   // Luồng hoạt động:
   //   - Nếu dailyRejectionCount < 3: tự động TỪ CHỐI (ghi log + reset đơn + tăng biến đếm)
@@ -515,7 +515,7 @@ class OrderRepository {
             'orderId': orderId,
             'shipperId': shipperId,
             'shipperName': shipperName,
-            'reason': 'Hệ thống tự động từ chối (không phản hồi sau 60 giây)',
+            'reason': 'Hệ thống tự động từ chối (không phản hồi sau 600 giây)',
             'rejectedAt': FieldValue.serverTimestamp(),
           });
 

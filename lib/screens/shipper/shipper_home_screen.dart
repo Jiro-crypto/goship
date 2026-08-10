@@ -204,7 +204,7 @@ class _ShipperHomeScreenState extends State<ShipperHomeScreen> with SingleTicker
 }
 
 // ============================================================================
-// COMPONENT: Card Đếm Ngược 60s & Form Từ chối (UC014)
+// COMPONENT: Card Đếm Ngược 600s & Form Từ chối (UC014)
 // ============================================================================
 class OrderAcceptanceCard extends StatefulWidget {
   final OrderModel order;
@@ -221,8 +221,8 @@ class OrderAcceptanceCard extends StatefulWidget {
 }
 
 class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
-  // BR_receiveOrder: Đếm ngược 60 giây để Shipper tiếp nhận hoặc từ chối đơn hàng
-  int _timeLeft = 60;
+  // BR_receiveOrder: Đếm ngược 600 giây để Shipper tiếp nhận hoặc từ chối đơn hàng
+  int _timeLeft = 600;
   Timer? _timer;
   bool _isProcessing = false;
 
@@ -270,7 +270,7 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
     }
   }
 
-  // UC03: Timeout 60s → gọi handleOrderTimeout() trên Firebase
+  // UC03: Timeout 600s → gọi handleOrderTimeout() trên Firebase
   void _handleTimeout() async {
     if (_isProcessing || widget.shipperId.isEmpty) return;
     setState(() => _isProcessing = true);
@@ -407,7 +407,7 @@ class _OrderAcceptanceCardState extends State<OrderAcceptanceCard> {
 
   @override
   Widget build(BuildContext context) {
-    final String formattedTimer = "${(_timeLeft ~/ 60).toString().padLeft(2, '0')}:${(_timeLeft % 60).toString().padLeft(2, '0')}";
+    final String formattedTimer = "${(_timeLeft ~/ 600).toString().padLeft(2, '0')}:${(_timeLeft % 60).toString().padLeft(2, '0')}";
     final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
     return Card(

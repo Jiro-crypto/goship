@@ -30,4 +30,22 @@ class CustomerRepository {
       return CustomerModel.fromFirestore(doc);
     });
   }
+  
+  // Đảm bảo rằng tài liệu khách hàng tồn tại, nếu không thì tạo mới
+  Future<void> ensureCustomerDoc(String uid, {String? email}) async {
+  final doc = await _customersCollection.doc(uid).get();
+  if (!doc.exists) {
+    await _customersCollection.doc(uid).set({
+      'uid': uid,
+      'name': '',
+      'phone': '',
+      'email': email ?? '',
+      'address': '',
+      'avatar': '',
+      'gender': '',
+      'city': '',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+}
 }

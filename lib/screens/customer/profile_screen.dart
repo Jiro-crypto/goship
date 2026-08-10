@@ -19,6 +19,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _currentUid = AuthRepository().getCurrentUid() ?? '';
+    _currentUid = AuthRepository().getCurrentUid() ?? '';
+    if (_currentUid.isNotEmpty) {
+      CustomerRepository().ensureCustomerDoc(
+        _currentUid,
+        email: AuthRepository().getCurrentEmail(),
+      );
+  }
   }
 
   void _logout() async {
@@ -51,8 +58,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: StreamBuilder<CustomerModel?>(
         stream: CustomerRepository().watchCustomer(_currentUid),
         builder: (context, snapshot) {
-          if (!snapshot.hasData && snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Đã xảy ra lỗi: ${snapshot.error}'));
           }
 
           final user = snapshot.data;
@@ -67,7 +77,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 CircleAvatar(
                   radius: 50,
                   backgroundColor: Colors.orange.shade100,
-                  backgroundImage: NetworkImage(user.avatar),
+                  backgroundImage: NetworkImage(
+                    user.avatar.isNotEmpty ? user.avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(user.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
