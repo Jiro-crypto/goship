@@ -294,11 +294,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 ),
                               ),
                               title: Row(
-                                children: [
-                                  Text(order.orderId, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  const Spacer(),
-                                  _buildStatusChip(order.status),
-                                ],
+                                  children: [
+                                    Expanded( // 1. Bọc Text trong Expanded để giới hạn chiều ngang
+                                      child: Text(
+                                        order.orderId, 
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                        overflow: TextOverflow.ellipsis, // 2. Thêm dấu '...' nếu ID quá dài
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8), // 3. Thay Spacer() bằng SizedBox để tạo khoảng cách nhỏ gọn
+                                    _buildStatusChip(order.status),
+                                  ],
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
