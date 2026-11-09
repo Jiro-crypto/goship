@@ -34,6 +34,7 @@ class _DevSeedScreenState extends State<DevSeedScreen> {
 
     // ─── 1. Tạo tài khoản Firebase Auth cho Shipper demo ───────
     const String shipperEmail = 'shipper1@goship.vn';
+    const String shipperEmail2 = 'shipper2@goship.vn';
     const String shipperPassword = 'password123';
     String shipperUid = '';
 
@@ -73,10 +74,24 @@ class _DevSeedScreenState extends State<DevSeedScreen> {
 
     // ─── 2. Tạo 4 documents trong collection 'shippers' ────────
     final List<Map<String, dynamic>> shippers = [
+      /*{
+        'uid': shipperUid,
+        'shipperId': 'SP-005',
+        'name': ' Phạm Anh Dũng',
+        'email': shipperEmail2,
+        'phone': '0966247542',
+        'licensePlate': '51GG',
+        'isActive': true,
+        'currentLat': 10.7769,
+        'currentLng': 106.7009,
+        'dailyRejectionCount': 1,
+        'rejectionCountDate': null,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      },*/
       {
         'uid': shipperUid,
         'shipperId': 'SP-001',
-        'name': 'Trần Minh Quân',
+        'name': 'Thích Bơm Hàng',
         'email': shipperEmail,
         'phone': '0912345678',
         'licensePlate': '51G-12345',

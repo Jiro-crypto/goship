@@ -23,33 +23,31 @@ class CustomerModel {
     required this.createdAt,
   });
 
+  // Đọc an toàn một trường String: null / sai kiểu -> chuỗi rỗng.
+  // Không gán giá trị mặc định giả (vd: 'Nam', 'TP. Hồ Chí Minh') để UI
+  // phân biệt được dữ liệu "chưa cập nhật" với dữ liệu thật.
+  static String _str(Map<String, dynamic> data, String key) {
+    final value = data[key];
+    return value is String ? value.trim() : '';
+  }
+
   // Từ Firestore Document -> Model
   factory CustomerModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    return CustomerModel(
-      uid: doc.id,
-      name: data['name'] ?? '',
-      phone: data['phone'] ?? '',
-      email: data['email'] ?? '',
-      address: data['address'] ?? '',
-      avatar: data['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-      gender: data['gender'] ?? 'Nam',
-      city: data['city'] ?? 'TP. Hồ Chí Minh',
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    );
+    final data = (doc.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
+    return CustomerModel.fromMap(data, doc.id);
   }
 
   // Từ Map -> Model (dùng khi đọc từ query)
   factory CustomerModel.fromMap(Map<String, dynamic> data, String id) {
     return CustomerModel(
       uid: id,
-      name: data['name'] ?? '',
-      phone: data['phone'] ?? '',
-      email: data['email'] ?? '',
-      address: data['address'] ?? '',
-      avatar: data['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-      gender: data['gender'] ?? 'Nam',
-      city: data['city'] ?? 'TP. Hồ Chí Minh',
+      name: _str(data, 'name'),
+      phone: _str(data, 'phone'),
+      email: _str(data, 'email'),
+      address: _str(data, 'address'),
+      avatar: _str(data, 'avatar'),
+      gender: _str(data, 'gender'),
+      city: _str(data, 'city'),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }

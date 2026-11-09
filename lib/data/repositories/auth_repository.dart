@@ -34,24 +34,54 @@ class AuthRepository {
     required String name,
     required String phone,
   }) async {
+    // Bước 1: Tạo tài khoản trên Firebase Authentication
+    User? user;
     try {
       UserCredential userCred = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      String uid = userCred.user!.uid;
+      user = userCred.user;
+    } on FirebaseAuthException catch (e) {
+      print('Register auth error code: ${e.code} | ${e.message}');
+      return false;
+    } catch (e) {
+      // WORKAROUND: Lỗi Pigeon của firebase_auth (xem hàm login) có thể xảy ra
+      // dù tài khoản đã được tạo THÀNH CÔNG. Kiểm tra currentUser để xác nhận.
+      user = _auth.currentUser;
+      if (user == null) {
+        print('Register unknown error: $e');
+        return false;
+      }
+      print('Register succeeded despite Pigeon serialization error (known flutter firebase_auth bug): $e');
+    }
 
+    if (user == null) {
+      print('Register error: user is null after createUserWithEmailAndPassword');
+      return false;
+    }
+
+    // Bước 2: Lưu thông tin khách hàng vào Firestore
+    final String uid = user.uid;
+    try {
       await _firestore.collection('customers').doc(uid).set({
         'uid': uid,
         'name': name,
         'phone': phone,
         'email': email,
         'address': '',
+        'avatar': '',
+        'gender': '',
+        'city': '',
         'createdAt': FieldValue.serverTimestamp(),
       });
       return true;
+    } on FirebaseException catch (e) {
+      // Ví dụ: permission-denied khi Firestore Security Rules không cho phép ghi
+      print('Register Firestore error code: ${e.code} | ${e.message}');
+      return false;
     } catch (e) {
-      print('Register error: $e');
+      print('Register Firestore unknown error: $e');
       return false;
     }
   }

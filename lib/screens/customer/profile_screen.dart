@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/customer_model.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/customer_repository.dart';
+import '../../widgets/user_avatar.dart';
 import 'edit_profile_screen.dart';
 import '../login_screen.dart';
 
@@ -13,19 +14,23 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  static const String _notUpdated = 'Chưa cập nhật';
+
   late String _currentUid;
+  late final Stream<CustomerModel?> _customerStream;
 
   @override
   void initState() {
     super.initState();
-    _currentUid = AuthRepository().getCurrentUid() ?? '';
     _currentUid = AuthRepository().getCurrentUid() ?? '';
     if (_currentUid.isNotEmpty) {
       CustomerRepository().ensureCustomerDoc(
         _currentUid,
         email: AuthRepository().getCurrentEmail(),
       );
-  }
+    }
+    // Tạo stream 1 lần, tránh mỗi lần build lại tạo listener Firestore mới.
+    _customerStream = CustomerRepository().watchCustomer(_currentUid);
   }
 
   void _logout() async {
@@ -35,6 +40,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
+    );
+  }
+
+  String _orNotUpdated(String value) => value.isNotEmpty ? value : _notUpdated;
+
+  Widget _infoTile(IconData icon, String title, String value) {
+    final isEmpty = value.isEmpty;
+    return ListTile(
+      leading: Icon(icon, color: Colors.orange),
+      title: Text(title),
+      subtitle: Text(
+        _orNotUpdated(value),
+        style: isEmpty ? TextStyle(color: Colors.grey.shade500, fontStyle: FontStyle.italic) : null,
+      ),
     );
   }
 
@@ -56,7 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: StreamBuilder<CustomerModel?>(
-        stream: CustomerRepository().watchCustomer(_currentUid),
+        stream: _customerStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -74,15 +93,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.all(20.0),
             child: Column(
               children: [
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.orange.shade100,
-                  backgroundImage: NetworkImage(
-                    user.avatar.isNotEmpty ? user.avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-                  ),
-                ),
+                UserAvatar(avatar: user.avatar, name: user.name, radius: 50),
                 const SizedBox(height: 12),
-                Text(user.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(
+                  user.name.isNotEmpty ? user.name : 'Khách hàng',
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
                 Text(user.email, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                 const SizedBox(height: 24),
 
@@ -90,23 +106,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: Column(
                     children: [
-                      ListTile(
-                        leading: const Icon(Icons.phone, color: Colors.orange),
-                        title: const Text('Số điện thoại'),
-                        subtitle: Text(user.phone),
-                      ),
+                      _infoTile(Icons.phone, 'Số điện thoại', user.phone),
                       const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.people, color: Colors.orange),
-                        title: const Text('Giới tính'),
-                        subtitle: Text(user.gender.isNotEmpty ? user.gender : "Nam"),
-                      ),
+                      _infoTile(Icons.people, 'Giới tính', user.gender),
                       const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.location_city, color: Colors.orange),
-                        title: const Text('Thành phố'),
-                        subtitle: Text(user.city.isNotEmpty ? user.city : "TP. Hồ Chí Minh"),
-                      ),
+                      _infoTile(Icons.location_city, 'Tỉnh / Thành phố', user.city),
+                      const Divider(height: 1),
+                      _infoTile(Icons.home, 'Địa chỉ', user.address),
                     ],
                   ),
                 ),
