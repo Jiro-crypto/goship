@@ -44,7 +44,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      if (result) {
+      if (!result) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Đăng ký thất bại. Vui lòng thử lại hoặc email đã được sử dụng!'),

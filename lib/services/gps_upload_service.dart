@@ -1,6 +1,6 @@
 // ============================================================
 // Dịch vụ gửi tọa độ vị trí GPS của Shipper lên máy chủ định kỳ (UC07)
-// Tự động định kỳ gửi GPS mỗi 5 giây khi Shipper đang thực hiện giao hàng
+// Tự động định kỳ gửi GPS mỗi 180 giây khi Shipper đang thực hiện giao hàng
 // ============================================================
 import 'dart:async';
 import 'dart:convert';
@@ -24,8 +24,8 @@ class GpsUploadService {
     // Gửi ngay tọa độ vị trí đầu tiên
     _sendLocationPayload();
 
-    // Thiết lập gửi định kỳ mỗi 5 giây
-    _uploadTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    // Thiết lập gửi định kỳ mỗi 180 giây
+    _uploadTimer = Timer.periodic(const Duration(seconds: 180), (timer) {
       _sendLocationPayload();
     });
   }
@@ -46,7 +46,7 @@ class GpsUploadService {
       // Lấy vị trí GPS hiện tại của Shipper
       final Position pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 4),
+        timeLimit: const Duration(seconds: 180),
       );
 
       // Gửi request API giả lập lên server (Endpoint backend thực tế)
