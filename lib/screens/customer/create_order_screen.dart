@@ -102,7 +102,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void _placeOrder() async {
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng điền đầy đủ thông tin bắt buộc (MSG10)')),
+        const SnackBar(content: Text('Vui lòng điền đầy đủ thông tin bắt buộc')),
       );
       return;
     }

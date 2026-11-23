@@ -2,8 +2,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthRepository {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Cho phép truyền FirebaseAuth giả vào khi viết test; mặc định dùng instance thật.
+  AuthRepository({FirebaseAuth? auth, FirebaseFirestore? firestore})
+      : _authOverride = auth,
+        _firestoreOverride = firestore;
+
+  final FirebaseAuth? _authOverride;
+  final FirebaseFirestore? _firestoreOverride;
+
+  FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
+  FirebaseFirestore get _firestore => _firestoreOverride ?? FirebaseFirestore.instance;
 
   // Đăng nhập
   Future<bool> login(String email, String password) async {
@@ -108,4 +116,58 @@ class AuthRepository {
 
   // Stream lắng nghe thay đổi trạng thái auth
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  /// Các mã lỗi cho biết tài khoản / phiên đăng nhập không còn hợp lệ trên máy chủ.
+  static const Set<String> _invalidSessionCodes = {
+    'user-not-found', // Tài khoản đã bị xoá trên Firebase Console
+    'user-disabled', // Tài khoản đã bị vô hiệu hoá (Disable)
+    'user-token-expired', // Token bị thu hồi (vd: đổi mật khẩu ở nơi khác)
+    'invalid-user-token',
+    'user-mismatch',
+  };
+
+  /// Hỏi lại máy chủ Firebase xem phiên đăng nhập hiện tại còn hợp lệ không.
+  ///
+  /// Firebase Auth lưu phiên trên máy và token có hạn tới 1 giờ, nên khi tài khoản
+  /// bị Disable / Delete trên Console, app sẽ không tự biết. Hàm này gọi
+  /// `reload()` để buộc kiểm tra với máy chủ; nếu tài khoản không còn hợp lệ thì
+  /// đăng xuất luôn (authStateChanges sẽ phát `null`).
+  ///
+  /// Lỗi mạng (offline) không bị coi là phiên hết hạn, để người dùng vẫn xem
+  /// được dữ liệu đã cache khi mất kết nối.
+  Future<SessionStatus> verifyCurrentUser() async {
+    final user = _auth.currentUser;
+    if (user == null) return SessionStatus.signedOut;
+
+    try {
+      // Giới hạn thời gian chờ để không treo màn hình khi mạng chập chờn.
+      await user.reload().timeout(const Duration(seconds: 8));
+      return _auth.currentUser == null ? SessionStatus.invalid : SessionStatus.valid;
+    } on FirebaseAuthException catch (e) {
+      if (_invalidSessionCodes.contains(e.code)) {
+        await _auth.signOut();
+        return SessionStatus.invalid;
+      }
+      // network-request-failed, too-many-requests, ... -> giữ phiên hiện tại.
+      return SessionStatus.unverified;
+    } catch (_) {
+      return SessionStatus.unverified;
+    }
+  }
+}
+
+
+/// Kết quả kiểm tra phiên đăng nhập với máy chủ.
+enum SessionStatus {
+  /// Tài khoản còn hoạt động.
+  valid,
+
+  /// Tài khoản đã bị xoá / vô hiệu hoá / token bị thu hồi -> đã tự đăng xuất.
+  invalid,
+
+  /// Chưa đăng nhập từ trước.
+  signedOut,
+
+  /// Không kiểm tra được (thường do mất mạng) -> tạm giữ phiên hiện tại.
+  unverified,
 }

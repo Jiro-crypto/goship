@@ -9,6 +9,7 @@ import 'create_order_screen.dart';
 import 'customer_order_detail_screen.dart';
 import 'profile_screen.dart';
 import '../login_screen.dart';
+import '../../widgets/not_logged_in_view.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -105,21 +106,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final primaryColor = Colors.orange.shade800;
 
     if (_currentUid.isEmpty) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text("Bạn chưa đăng nhập."),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _logout,
-                child: const Text("Về trang Đăng nhập"),
-              ),
-            ],
-          ),
-        ),
-      );
+      return const Scaffold(body: NotLoggedInView());
     }
 
     return StreamBuilder<CustomerModel?>(
