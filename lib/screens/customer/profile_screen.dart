@@ -1,10 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../models/customer_model.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/customer_repository.dart';
+import '../../widgets/not_logged_in_view.dart';
 import '../../widgets/user_avatar.dart';
 import 'edit_profile_screen.dart';
-import '../login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,32 +17,59 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   static const String _notUpdated = 'Chưa cập nhật';
 
-  late String _currentUid;
-  late final Stream<CustomerModel?> _customerStream;
+  /// Lắng nghe trạng thái đăng nhập liên tục (không chỉ kiểm tra 1 lần lúc mở trang),
+  /// để khi phiên đăng nhập mất (đăng xuất, tài khoản bị khoá, token hết hạn...)
+  /// trang tự chuyển sang màn "Bạn chưa đăng nhập".
+  late final Stream<User?> _authStream;
+
+  /// Stream hồ sơ được cache theo uid, tránh tạo listener Firestore mới mỗi lần build.
+  String? _streamUid;
+  Stream<CustomerModel?>? _customerStream;
+
+  /// Đang hỏi máy chủ xem tài khoản còn hợp lệ không (lúc vừa mở trang).
+  bool _verifying = true;
+
+  /// Tài khoản đã bị Disable / Delete trên Firebase Console (đã tự đăng xuất).
+  bool _accountRevoked = false;
 
   @override
   void initState() {
     super.initState();
-    _currentUid = AuthRepository().getCurrentUid() ?? '';
-    if (_currentUid.isNotEmpty) {
-      CustomerRepository().ensureCustomerDoc(
-        _currentUid,
-        email: AuthRepository().getCurrentEmail(),
-      );
+    _authStream = AuthRepository().authStateChanges;
+    _verifySession();
+  }
+
+  /// Firebase lưu phiên đăng nhập trên máy (token sống tới 1 giờ) nên không tự
+  /// biết khi tài khoản bị vô hiệu hoá / xoá trên Console. Mỗi lần mở trang,
+  /// hỏi lại máy chủ; nếu không còn hợp lệ, repository sẽ đăng xuất và
+  /// authStateChanges phát `null` -> hiện màn "Bạn chưa đăng nhập".
+  Future<void> _verifySession() async {
+    final status = await AuthRepository().verifyCurrentUser();
+    if (!mounted) return;
+    setState(() {
+      _verifying = false;
+      _accountRevoked = status == SessionStatus.invalid;
+    });
+  }
+
+  Stream<CustomerModel?> _customerStreamFor(User user) {
+    if (_streamUid != user.uid || _customerStream == null) {
+      _streamUid = user.uid;
+      // Tạo document nếu chưa có (chỉ chạy 1 lần cho mỗi uid, và chỉ sau khi
+      // đã xác minh tài khoản -> không tạo lại document cho tài khoản đã bị xoá).
+      CustomerRepository().ensureCustomerDoc(user.uid, email: user.email);
+      _customerStream = CustomerRepository().watchCustomer(user.uid);
     }
-    // Tạo stream 1 lần, tránh mỗi lần build lại tạo listener Firestore mới.
-    _customerStream = CustomerRepository().watchCustomer(_currentUid);
+    return _customerStream!;
   }
 
   void _logout() async {
     await AuthRepository().logout();
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    NotLoggedInView.goToLogin(context);
   }
+
+  void _goToLogin() => NotLoggedInView.goToLogin(context);
 
   String _orNotUpdated(String value) => value.isNotEmpty ? value : _notUpdated;
 
@@ -61,27 +89,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final primaryColor = Colors.orange.shade800;
 
-    if (_currentUid.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Hồ sơ cá nhân'), backgroundColor: primaryColor),
-        body: const Center(child: Text("Không tìm thấy người dùng hiện tại.")),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Hồ sơ cá nhân', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: primaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: StreamBuilder<CustomerModel?>(
-        stream: _customerStream,
+      body: StreamBuilder<User?>(
+        stream: _authStream,
+        builder: (context, authSnapshot) {
+          if (_verifying ||
+              (authSnapshot.connectionState == ConnectionState.waiting && !authSnapshot.hasData)) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final authUser = authSnapshot.data;
+          if (authUser == null) {
+            return _accountRevoked
+                ? NotLoggedInView(
+                    onLogin: _goToLogin,
+                    message: 'Tài khoản của bạn đã bị vô hiệu hoá hoặc không còn tồn tại. '
+                        'Vui lòng đăng nhập bằng tài khoản khác hoặc liên hệ hỗ trợ.',
+                  )
+                : NotLoggedInView(onLogin: _goToLogin);
+          }
+
+          return _buildProfile(authUser, primaryColor);
+        },
+      ),
+    );
+  }
+
+  Widget _buildProfile(User authUser, Color primaryColor) {
+    return StreamBuilder<CustomerModel?>(
+        stream: _customerStreamFor(authUser),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Đã xảy ra lỗi: ${snapshot.error}'));
+            // Firestore từ chối đọc (thường do phiên đăng nhập không còn hợp lệ)
+            // -> mời đăng nhập lại thay vì hiện lỗi thô.
+            final error = snapshot.error;
+            if (error is FirebaseException &&
+                (error.code == 'permission-denied' || error.code == 'unauthenticated')) {
+              return NotLoggedInView(
+                onLogin: _goToLogin,
+                message: 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.',
+              );
+            }
+            return Center(child: Text('Đã xảy ra lỗi: $error'));
           }
 
           final user = snapshot.data;
@@ -148,8 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           );
-        }
-      ),
+        },
     );
   }
 }
